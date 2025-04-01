@@ -54,8 +54,8 @@ vector<double> ChipCalculateArea(InputParameter& inputParameter, Technology& tec
 						int numTileRow, double *height, double *width, double *CMTileheight, double *CMTilewidth, double *NMTileheight, double *NMTilewidth);
 						
 double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech, MemCell& cell, int layerNumber, const string &newweightfile, const string &oldweightfile, const string &inputfile, bool followedByMaxPool, const vector<vector<double> > &netStructure, 
-							const vector<int> &markNM, const vector<vector<double> > &numTileEachLayer, const vector<vector<double> > &utilizationEachLayer, const vector<vector<double> > &speedUpEachLayer, 
-							const vector<vector<double> > &tileLocaEachLayer, double numPENM, double desiredPESizeNM, double desiredTileSizeCM, double desiredPESizeCM,
+							const vector<int> &markNM, int digital, int seq_len, int seq_len_total, const vector<vector<double> > &numTileEachLayer, const vector<vector<double> > &utilizationEachLayer, const vector<vector<double> > &speedUpEachLayer,  //对于chip来说，不区分该任务是否为完整推理，只根据获取的输入长度以及当前的KV缓存大小计算对应生成一个token的延迟和能耗具体管理在Main中进行
+							const vector<vector<double> > &tileLocaEachLayer, double numPENM, double desiredPESizeNM, double desiredTileSizeCM, double desiredPESizeCM,	//使用digital来表征是否为数字计算
 							double CMTileheight, double CMTilewidth, double NMTileheight, double NMTilewidth, int numArrayWriteParallel, double *readLatency, double *readDynamicEnergy, 
 							double *leakage, double *readLatencyAG, double *readDynamicEnergyAG, double *readLatencyWG, double *readDynamicEnergyWG, double *writeLatencyWU, double *writeDynamicEnergyWU,
 							double *bufferLatency, double *bufferDynamicEnergy, double *icLatency, double *icDynamicEnergy,double *coreLatencyADC, double *coreLatencyAccum, 

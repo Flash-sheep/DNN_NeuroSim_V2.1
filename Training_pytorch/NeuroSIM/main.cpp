@@ -67,7 +67,9 @@ int main(int argc, char * argv[]) {
 	gen.seed(0);
 	
 	vector<vector<double> > netStructure;
-	netStructure = getNetStructure(argv[2]);
+
+	if(!param->digital)
+		netStructure = getNetStructure(argv[2]);
 	
 	// define weight/input/memory precision from wrapper
 	param->synapseBit = atoi(argv[3]);             		 // precision of synapse weight
@@ -132,8 +134,12 @@ int main(int argc, char * argv[]) {
 	double maxPESizeNM, maxTileSizeCM, numPENM;
 	vector<int> markNM;
 	vector<int> pipelineSpeedUp;
-	markNM = ChipDesignInitialize(inputParameter, tech, cell, false, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
-	pipelineSpeedUp = ChipDesignInitialize(inputParameter, tech, cell, true, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
+
+	if(!param->digital){
+		markNM = ChipDesignInitialize(inputParameter, tech, cell, false, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
+		pipelineSpeedUp = ChipDesignInitialize(inputParameter, tech, cell, true, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
+	}
+	
 	
 	double desiredNumTileNM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM;
 	int numTileRow, numTileCol;
@@ -144,21 +150,32 @@ int main(int argc, char * argv[]) {
 	vector<vector<double> > speedUpEachLayer;
 	vector<vector<double> > tileLocaEachLayer;
 	
-	numTileEachLayer = ChipFloorPlan(true, false, false, netStructure, markNM, 
-					maxPESizeNM, maxTileSizeCM, numPENM, pipelineSpeedUp,
-					&desiredNumTileNM, &desiredPESizeNM, &desiredNumTileCM, &desiredTileSizeCM, &desiredPESizeCM, &numTileRow, &numTileCol);	
-	
-	utilizationEachLayer = ChipFloorPlan(false, true, false, netStructure, markNM, 
+	if(!param->digital){
+		numTileEachLayer = ChipFloorPlan(true, false, false, netStructure, markNM, 
+			maxPESizeNM, maxTileSizeCM, numPENM, pipelineSpeedUp,
+			&desiredNumTileNM, &desiredPESizeNM, &desiredNumTileCM, &desiredTileSizeCM, &desiredPESizeCM, &numTileRow, &numTileCol);	
+
+		utilizationEachLayer = ChipFloorPlan(false, true, false, netStructure, markNM, 
 					maxPESizeNM, maxTileSizeCM, numPENM, pipelineSpeedUp,
 					&desiredNumTileNM, &desiredPESizeNM, &desiredNumTileCM, &desiredTileSizeCM, &desiredPESizeCM, &numTileRow, &numTileCol);
-	
-	speedUpEachLayer = ChipFloorPlan(false, false, true, netStructure, markNM,
+
+		speedUpEachLayer = ChipFloorPlan(false, false, true, netStructure, markNM,
 					maxPESizeNM, maxTileSizeCM, numPENM, pipelineSpeedUp,
 					&desiredNumTileNM, &desiredPESizeNM, &desiredNumTileCM, &desiredTileSizeCM, &desiredPESizeCM, &numTileRow, &numTileCol);
 					
-	tileLocaEachLayer = ChipFloorPlan(false, false, false, netStructure, markNM,
+		tileLocaEachLayer = ChipFloorPlan(false, false, false, netStructure, markNM,
 					maxPESizeNM, maxTileSizeCM, numPENM, pipelineSpeedUp,
 					&desiredNumTileNM, &desiredPESizeNM, &desiredNumTileCM, &desiredTileSizeCM, &desiredPESizeCM, &numTileRow, &numTileCol);
+	}
+	else{
+		//手动设置在数字计算模式下的参数
+		desiredPESizeCM = 11008*param->synapseBit; //暂时设置为最大的矩阵边
+		desiredTileSizeCM = 3*desiredPESizeCM;  //考虑使用9个pe
+		numTileRow = ceil(sqrt(param->numDecoderBlock));
+		numTileCol = numTileRow;
+
+	}
+	
 	
 	cout << "------------------------------ FloorPlan --------------------------------" <<  endl;
 	cout << endl;
@@ -180,6 +197,11 @@ int main(int argc, char * argv[]) {
 		cout << "layer" << i+1 << ": " << numTileEachLayer[0][i] * numTileEachLayer[1][i] << endl;
 		totalNumTile += numTileEachLayer[0][i] * numTileEachLayer[1][i];
 	}
+
+	if(param->digital){
+		totalNumTile = param->numDecoderBlock; //Tile的个数就是decoderBlock的个数
+	}
+	 
 	cout << endl;
 
 	cout << "----------------- Speed-up of each layer ------------------" <<  endl;
@@ -222,8 +244,12 @@ int main(int argc, char * argv[]) {
 	double NMTilewidth = 0;
 	vector<double> chipAreaResults;
 				
-	chipAreaResults = ChipCalculateArea(inputParameter, tech, cell, desiredNumTileNM, numPENM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM, numTileRow, 
-					&chipHeight, &chipWidth, &CMTileheight, &CMTilewidth, &NMTileheight, &NMTilewidth);		
+	if(!param->digital){ //暂时不计算面积开销
+		chipAreaResults = ChipCalculateArea(inputParameter, tech, cell, desiredNumTileNM, numPENM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM, numTileRow, 
+			&chipHeight, &chipWidth, &CMTileheight, &CMTilewidth, &NMTileheight, &NMTilewidth);	
+	}
+	
+
 	chipArea = chipAreaResults[0];
 	chipAreaIC = chipAreaResults[1];
 	chipAreaADC = chipAreaResults[2];

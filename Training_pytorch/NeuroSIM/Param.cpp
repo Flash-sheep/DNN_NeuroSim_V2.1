@@ -54,6 +54,25 @@ using namespace std;
 
 Param::Param() {
 	/***************************************** user defined design options and parameters *****************************************/
+
+	digital = 1; 				//在main函数中判断是否使用数字计算// 理论上在其他模块中也可以直接用这个来判断 
+								// 0: 模拟计算
+								// 1: 数字计算
+	d_model = 4096;
+	d_k = 128;
+	d_v = 128;
+	n_heads = 32;
+	batch_size = 50; 
+	max_length = 4096;
+	d_hidden = 11008;
+	 
+	input_len = 10; 			// 这里该如何设置？workLoad该如何选取
+	output_len = 500;
+	numDecoderBlock = 32;
+
+
+
+
 	operationmode = 2;     		// 1: conventionalSequential (Use several multi-bit RRAM as one synapse)
 								// 2: conventionalParallel (Use several multi-bit RRAM as one synapse)
 	
@@ -127,9 +146,12 @@ Param::Param() {
 	treeFoldedRatio = 4;                // the H-Tree is assumed to be able to folding in layout (save area)
 	maxGlobalBusWidth = 8192;           // the max buswidth allowed on chip level (just a upper_bound, the actual bus width is defined according to the auto floorplan)
 
-	numRowSubArray = 128;               // # of rows in single subArray
-	numColSubArray = 128;               // # of columns in single subArray
-	
+	numRowSubArray = 512;               // # of rows in single subArray
+	numColSubArray = 512;               // # of columns in single subArray
+	numRowSubArrayReal = 512;
+	numColSubArrayReal = 1024;			// 理论上需要考虑中间结果区，但是考虑到简化处理就忽略了 TODO
+
+
 	/*** option to relax subArray layout ***/
 	relaxArrayCellHeight = 0;           // relax ArrayCellHeight or not
 	relaxArrayCellWidth = 0;            // relax ArrayCellWidth or not

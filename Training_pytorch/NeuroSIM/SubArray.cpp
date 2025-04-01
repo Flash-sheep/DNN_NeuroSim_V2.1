@@ -307,8 +307,67 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 				cell.resMemCellAvgAtVw = cell.resistanceAvg;
 			}
 		}
-		
-		if (conventionalSequential) {  
+
+		if(parallelWrite){
+			//通过parallelWrite变量来表征是否为数字计算
+			double resTg = cell.resMemCellOn / numRow;
+			
+			wlSwitchMatrix.Initialize(ROW_MODE, numRow, resTg*numRow/numCol, true, true, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, numWritePulseAVG, clkFreq);
+			
+			slSwitchMatrix.Initialize(COL_MODE, numCol, resTg*numRow, true, true, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, numWritePulseAVG, clkFreq);     
+			
+			if (numColMuxed>1) {
+				mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resTg, FPGA);       
+				muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, true);
+			}
+			
+
+			multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
+			multilevelSAEncoder.Initialize(levelOutput, numCol/numColMuxed);
+			
+			//Transpose电路可能会需要使用
+			// /* Transpose Peripheral for BP */
+			// if (trainingEstimation) {
+			// 	if (numRowMuxedBP>1) {
+			// 		muxBP.Initialize(ceil(numRow/numRowMuxedBP), numRowMuxedBP, cell.resMemCellOn/numCol, FPGA);       
+			// 		muxDecoderBP.Initialize(REGULAR_ROW, (int)ceil(log2(numRowMuxedBP)), true, false);
+			// 	}
+			// 	if (parallelBP) {
+			// 		if (SARADC) {
+			// 			sarADCBP.Initialize(numRow/numRowMuxedBP, levelOutputBP, clkFreq, numReadCellPerOperationNeuro);
+			// 		} else {
+			// 			multilevelSenseAmpBP.Initialize(numRow/numRowMuxedBP, levelOutputBP, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
+			// 			multilevelSAEncoderBP.Initialize(levelOutputBP, numRow/numRowMuxedBP);
+			// 		}
+			// 		if (numCellPerSynapse > 1) {
+			// 			shiftAddBPWeight.Initialize(ceil(numRow/numRowMuxedBP), log2(levelOutputBP), clkFreq, spikingMode, numCellPerSynapse);
+			// 		}
+			// 		if (numReadPulseBP > 1) {
+			// 			shiftAddBPInput.Initialize(ceil(numRow/numRowMuxedBP), log2(levelOutputBP)+numCellPerSynapse, clkFreq, spikingMode, numReadPulseBP);
+			// 		}
+			// 	} else {
+					
+			// 		if (SARADC) {
+			// 			sarADCBP.Initialize(numRow/numRowMuxedBP, pow(2, avgWeightBit), clkFreq, numReadCellPerOperationNeuro);
+			// 		} else {
+			// 			multilevelSenseAmpBP.Initialize(numRow/numRowMuxedBP, pow(2, avgWeightBit), clkFreq, numReadCellPerOperationNeuro, false, currentMode);
+			// 			if (avgWeightBit > 1) {
+			// 				multilevelSAEncoderBP.Initialize(pow(2, avgWeightBit), numRow/numRowMuxedBP);
+			// 			}
+			// 		}
+
+			// 		dffBP.Initialize((ceil(log2(numCol)) + avgWeightBit+1)*ceil(numRow/numRowMuxedBP), clkFreq); 
+			// 		adderBP.Initialize(ceil(log2(numCol)) + avgWeightBit, ceil(numRow/numRowMuxedBP));
+			// 		if (numCellPerSynapse > 1) {
+			// 			shiftAddBPWeight.Initialize(ceil(numRow/numRowMuxedBP), ceil(log2(numCol))+avgWeightBit, clkFreq, spikingMode, numCellPerSynapse);
+			// 		}
+			// 		if (numReadPulseBP > 1) {
+			// 			shiftAddBPInput.Initialize(ceil(numRow/numRowMuxedBP), ceil(log2(numCol))+avgWeightBit+numCellPerSynapse, clkFreq, spikingMode, numReadPulseBP);
+			// 		}
+			// 	}
+			// }
+		}
+		else if (conventionalSequential) {  
 			double capBL = lengthCol * 0.2e-15/1e-6;
 			int numAdder = (int)ceil(numCol/numColMuxed);   // numCol is divisible by numCellPerSynapse
 			int numInput = numAdder;        //XXX input number of MUX, 
@@ -710,7 +769,90 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 			widthArray = lengthRow;
 			areaArray = heightArray * widthArray;
 			
-			if (conventionalSequential) {  
+			if(parallelWrite){
+				wlSwitchMatrix.CalculateArea(heightArray, NULL, NONE);
+		
+				slSwitchMatrix.CalculateArea(NULL, widthArray, NONE);
+				if (numColMuxed > 1) {
+					mux.CalculateArea(NULL, widthArray, NONE);
+					muxDecoder.CalculateArea(NULL, NULL, NONE);
+					double minMuxHeight = MAX(muxDecoder.height, mux.height);
+					mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
+				}
+
+				multilevelSenseAmp.CalculateArea(NULL, widthArray, NONE);
+				multilevelSAEncoder.CalculateArea(NULL, widthArray, NONE);
+								
+				height = slSwitchMatrix.height + heightArray + mux.height + multilevelSenseAmp.height + multilevelSAEncoder.height + shiftAddInput.height + shiftAddWeight.height + sarADC.height;
+				width = MAX(wlNewSwitchMatrix.width + wlSwitchMatrix.width, muxDecoder.width) + widthArray;
+				usedArea = areaArray + wlSwitchMatrix.area + wlNewSwitchMatrix.area + slSwitchMatrix.area + mux.area + multilevelSenseAmp.area + muxDecoder.area + multilevelSAEncoder.area + shiftAddInput.area + shiftAddWeight.area + sarADC.area;
+				
+				areaADC = multilevelSenseAmp.area + multilevelSAEncoder.area + sarADC.area;
+				areaAccum = shiftAddInput.area + shiftAddWeight.area;
+				areaOther = wlNewSwitchMatrix.area + wlSwitchMatrix.area + slSwitchMatrix.area + mux.area + muxDecoder.area;
+				
+				// /* Transpose Peripheral for BP */
+				// if (trainingEstimation) {
+				// 	if (numRowMuxedBP>1) {
+				// 		muxBP.CalculateArea(heightArray, NULL, NONE);
+				// 		muxDecoderBP.CalculateArea(NULL, NULL, NONE);
+				// 		double minMuxWidth = MAX(muxDecoderBP.width, muxBP.width);
+				// 		muxBP.CalculateArea(heightArray, minMuxWidth, OVERRIDE);
+				// 	}
+					
+				// 	if (parallelBP) {
+				// 		if (SARADC) {
+				// 			sarADCBP.CalculateUnitArea();
+				// 			sarADCBP.CalculateArea(heightArray, NULL, NONE);
+				// 		} else {
+				// 			multilevelSenseAmpBP.CalculateArea(heightArray, NULL, NONE);
+				// 			multilevelSAEncoderBP.CalculateArea(heightArray, NULL, NONE);
+				// 		}
+
+				// 		if (numReadPulseBP > 1) {
+				// 			shiftAddBPInput.CalculateArea(heightArray, NULL, NONE);
+				// 		}
+				// 		if (numCellPerSynapse > 1) {
+				// 			shiftAddBPWeight.CalculateArea(heightArray, NULL, NONE);
+				// 		}
+				// 		width += muxBP.width + multilevelSenseAmpBP.width + multilevelSAEncoderBP.width + shiftAddBPInput.width + shiftAddBPWeight.width + sarADCBP.width;
+				// 		areaAG = muxBP.area + muxDecoderBP.area + multilevelSenseAmpBP.area + multilevelSAEncoderBP.area + shiftAddBPInput.area + shiftAddBPWeight.area + sarADCBP.area;
+				// 		usedArea += areaAG;
+				// 		areaADC += multilevelSenseAmpBP.area + multilevelSAEncoderBP.area + sarADCBP.area;
+				// 		areaAccum += shiftAddBPInput.area + shiftAddBPWeight.area;
+				// 		areaOther += muxBP.area + muxDecoderBP.area;
+				// 	} else {
+				// 		if (SARADC) {
+				// 			sarADCBP.CalculateUnitArea();
+				// 			sarADCBP.CalculateArea(heightArray, NULL, NONE);
+				// 		} else {
+				// 			multilevelSenseAmpBP.CalculateArea(heightArray, NULL, NONE);
+				// 			if (avgWeightBit > 1) {
+				// 				multilevelSAEncoderBP.CalculateArea(heightArray, NULL, NONE);
+				// 			}
+				// 		}
+
+				// 		dffBP.CalculateArea(heightArray, NULL, NONE);
+				// 		adderBP.CalculateArea(heightArray, NULL, NONE);
+						
+				// 		if (numReadPulseBP > 1) {
+				// 			shiftAddBPInput.CalculateArea(heightArray, NULL, NONE);
+				// 		}
+				// 		if (numCellPerSynapse > 1) {
+				// 			shiftAddBPWeight.CalculateArea(heightArray, NULL, NONE);
+				// 		}
+				// 		width += muxBP.width + multilevelSenseAmpBP.width + multilevelSAEncoderBP.width + dffBP.width + adderBP.width + shiftAddBPInput.width + shiftAddBPWeight.width + sarADCBP.width;
+				// 		areaAG = muxBP.area + muxDecoderBP.area + multilevelSenseAmpBP.area + multilevelSAEncoderBP.area + dffBP.area + adderBP.area + shiftAddBPInput.area + shiftAddBPWeight.area + sarADCBP.area;
+				// 		usedArea += areaAG;
+				// 		areaADC += multilevelSenseAmpBP.area + multilevelSAEncoderBP.area + sarADCBP.area;
+				// 		areaAccum += dffBP.area + adderBP.area + shiftAddBPInput.area + shiftAddBPWeight.area;
+				// 		areaOther += muxBP.area + muxDecoderBP.area;
+				// 	}
+				// }
+				area = height * width;
+				emptyArea = area - usedArea;
+			}
+			else if (conventionalSequential) {  
 				wlDecoder.CalculateArea(heightArray, NULL, NONE);
 				if (cell.accessType == CMOS_access) {
 					wlNewDecoderDriver.CalculateArea(heightArray, NULL, NONE);
@@ -967,10 +1109,10 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 		} 
 	}
 }
-
 void SubArray::CalculateLatency(double columnRes, const vector<double> &columnResistance, const vector<double> &rowResistance) {   //calculate latency for different mode 
 	if (!initialized) {
 		cout << "[Subarray] Error: Require initialization first!" << endl;
+		
 	} else {
 		
 		readLatency = 0;
@@ -1348,7 +1490,132 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 				
 			}
 	    } else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
-			if (conventionalSequential) {
+
+			if (parallelWrite){
+				double capBL = lengthCol * 0.2e-15/1e-6;
+				int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
+				double colRamp = 0;
+				double tau = (capCol)*(cell.resMemCellAvg/(numRow/2));
+				colDelay = horowitz(tau, 0, 1e20, &colRamp);
+				colDelay = tau * 0.2 * numColMuxed;  // assume the 15~20% voltage drop is enough for sensing
+				
+
+				wlSwitchMatrix.CalculateLatency(1e20, capRow1, resRow, 2+0+numRow*numColMuxed, 0); //Wl需要进行输入写入，nor运算，以及最后的逐行读取操作
+
+				slSwitchMatrix.CalculateLatency(1e20, capCol, resCol, 2+mulNor+addNor+0, 0); //sl需要进行输入写入，nor运算，以及最后的逐行读取操作。这里都忽略了Set操作的开销
+				
+				if (numColMuxed>1) {
+					mux.CalculateLatency(colRamp, 0, numColMuxed*numRow);
+					muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), numColMuxed*numRow, 0);
+				}
+
+				multilevelSenseAmp.CalculateLatency(columnResistance, numColMuxed, numRow);
+				multilevelSAEncoder.CalculateLatency(1e20, numColMuxed*numRow);
+				
+				
+				// Read
+				readLatency = 0;
+				//这里numReadPulse的作用不清楚，在数字计算中去掉
+				readLatency += MAX(wlNewSwitchMatrix.readLatency + wlSwitchMatrix.readLatency, ( ((numColMuxed > 1)==true? (mux.readLatency+muxDecoder.readLatency):0) ));
+				readLatency += slSwitchMatrix.readLatency; //添加sl组件的读延迟
+				readLatency += multilevelSenseAmp.readLatency;
+				readLatency += multilevelSAEncoder.readLatency;
+				readLatency += shiftAddInput.readLatency + shiftAddWeight.readLatency;
+				readLatency += colDelay;
+				readLatency += sarADC.readLatency;
+				
+				readLatencyADC = multilevelSenseAmp.readLatency + multilevelSAEncoder.readLatency + sarADC.readLatency;
+				readLatencyAccum = shiftAddInput.readLatency + shiftAddWeight.readLatency;
+				readLatencyOther = MAX(wlNewSwitchMatrix.readLatency + wlSwitchMatrix.readLatency, ( ((numColMuxed > 1)==true? (mux.readLatency+muxDecoder.readLatency):0) )) + colDelay;
+
+				// Write
+				writeLatency = 0;
+				writeLatencyArray = 0;
+				writeLatencyArray += (mulNor+addNor) * cell.writePulseWidth; //每个nor操作之间都是串行执行的 TODO，这一部分可能带来相当高的延迟
+				writeLatency += MAX(wlNewSwitchMatrix.writeLatency + wlSwitchMatrix.writeLatency, slSwitchMatrix.writeLatency);
+				writeLatency += writeLatencyArray;
+
+				readLatency += writeLatencyArray;
+				
+				// /* Transpose Peripheral for BP */
+				// if (trainingEstimation) {
+				// 	readLatencyAG = 0;
+				// 	if (layerNumber != 0) {
+				// 		double capRow = lengthRow * 0.2e-15/1e-6 + CalculateDrainCap(cell.widthAccessCMOS * tech.featureSize, NMOS, cell.widthInFeatureSize * tech.featureSize, tech) * numCol;
+				// 		tau = (capRow)*(cell.resMemCellAvg/(numCol/2));
+				// 		double rowDelay = tau * 0.2 * numRowMuxedBP;  // assume the 15~20% voltage drop is enough for sensing
+				// 		if (parallelBP) {
+				// 			slSwitchMatrix.CalculateLatency(1e20, capCol, resCol, numRowMuxedBP, 2*numWriteOperationPerRow*numRow*activityRowWrite);
+				// 			if (numRowMuxedBP>1) {
+				// 				muxBP.CalculateLatency(colRamp, 0, numRowMuxedBP);
+				// 				muxDecoderBP.CalculateLatency(1e20, muxBP.capTgGateN*ceil(numRow/numRowMuxedBP), muxBP.capTgGateP*ceil(numRow/numRowMuxedBP), numRowMuxedBP, 0);
+				// 			}
+				// 			if (SARADC) {
+				// 				sarADCBP.CalculateLatency(numRowMuxedBP);
+				// 			} else {
+				// 				multilevelSenseAmpBP.CalculateLatency(columnResistance, numRowMuxedBP, 1);
+				// 				multilevelSAEncoderBP.CalculateLatency(1e20, numRowMuxedBP);
+				// 			}
+							
+				// 			if (numCellPerSynapse > 1) {
+				// 				shiftAddBPWeight.CalculateLatency(numRowMuxedBP);	
+				// 			}
+				// 			if (numReadPulseBP > 1) {
+				// 				shiftAddBPInput.CalculateLatency(ceil(numRowMuxedBP/numCellPerSynapse));		
+				// 			}
+							
+				// 			readLatencyAG += MAX(slSwitchMatrix.readLatency, ( ((numRowMuxedBP > 1)==true? (muxBP.readDynamicEnergy + muxDecoderBP.readDynamicEnergy):0) )/numReadPulseBP);
+				// 			readLatencyAG += multilevelSenseAmpBP.readLatency;
+				// 			readLatencyAG += multilevelSAEncoderBP.readLatency;
+				// 			readLatencyAG += shiftAddBPInput.readLatency + shiftAddBPWeight.readLatency;
+				// 			readLatencyAG += rowDelay/numReadPulseBP;
+				// 			readLatencyAG += sarADCBP.readLatency;
+							
+				// 			readLatencyADC += multilevelSenseAmpBP.readLatency + multilevelSAEncoderBP.readLatency + sarADCBP.readLatency;
+				// 			readLatencyAccum += shiftAddBPInput.readLatency + shiftAddBPWeight.readLatency;
+				// 			readLatencyOther += MAX(slSwitchMatrix.readLatency, ( ((numRowMuxedBP > 1)==true? (muxBP.readDynamicEnergy + muxDecoderBP.readDynamicEnergy):0) )/numReadPulseBP) + rowDelay/numReadPulseBP;
+				// 		} else {
+				// 			slSwitchMatrix.CalculateLatency(1e20, capCol, resCol, numRowMuxedBP*numCol*activityBPColRead, 2*numWriteOperationPerRow*numRow*activityRowWrite);
+				// 			if (numRowMuxedBP>1) {
+				// 				muxBP.CalculateLatency(colRamp, 0, numRowMuxedBP);
+				// 				muxDecoderBP.CalculateLatency(1e20, muxBP.capTgGateN*ceil(numRow/numRowMuxedBP), muxBP.capTgGateP*ceil(numRow/numRowMuxedBP), numRowMuxedBP, 0);
+				// 			}
+				// 			if (SARADC) {
+				// 				sarADCBP.CalculateLatency(numRowMuxedBP*numCol*activityBPColRead);
+				// 			} else {
+				// 				multilevelSenseAmpBP.CalculateLatency(columnResistance, numRowMuxedBP, numCol*activityBPColRead);
+				// 				if (avgWeightBit > 1) {
+				// 					multilevelSAEncoderBP.CalculateLatency(1e20, numRowMuxedBP*numCol*activityBPColRead);
+				// 				}
+				// 			}
+
+				// 			dffBP.CalculateLatency(1e20, numRowMuxedBP*numCol*activityBPColRead);
+				// 			adderBP.CalculateLatency(1e20, dffBP.capTgDrain, numRowMuxedBP*numCol*activityBPColRead);
+							
+				// 			if (numCellPerSynapse > 1) {
+				// 				shiftAddBPWeight.CalculateLatency(numRowMuxedBP);	
+				// 			}
+				// 			if (numReadPulseBP > 1) {
+				// 				shiftAddBPInput.CalculateLatency(ceil(numRowMuxedBP/numCellPerSynapse));		
+				// 			}
+							
+				// 			readLatencyAG += MAX(slSwitchMatrix.readLatency, ( ((numRowMuxedBP > 1)==true? (muxBP.readDynamicEnergy + muxDecoderBP.readDynamicEnergy):0) )/numReadPulseBP);
+				// 			readLatencyAG += multilevelSenseAmpBP.readLatency;
+				// 			readLatencyAG += multilevelSAEncoderBP.readLatency;
+				// 			readLatencyAG += adderBP.readLatency;
+				// 			readLatencyAG += dffBP.readLatency;
+				// 			readLatencyAG += shiftAddBPInput.readLatency + shiftAddBPWeight.readLatency;
+				// 			readLatencyAG += rowDelay/numReadPulseBP;
+				// 			readLatencyAG += sarADCBP.readLatency;
+							
+				// 			readLatencyADC += multilevelSenseAmpBP.readLatency + multilevelSAEncoderBP.readLatency + sarADCBP.readLatency;
+				// 			readLatencyAccum += adderBP.readLatency + dffBP.readLatency + shiftAddBPInput.readLatency + shiftAddBPWeight.readLatency;
+				// 			readLatencyOther += MAX(slSwitchMatrix.readLatency, ( ((numRowMuxedBP > 1)==true? (muxBP.readDynamicEnergy + muxDecoderBP.readDynamicEnergy):0) )/numReadPulseBP) + rowDelay/numReadPulseBP;
+				// 		}
+				// 	}
+				// }
+			}
+			else if (conventionalSequential) {
 				double capBL = lengthCol * 0.2e-15/1e-6;
 				double colRamp = 0;
 				double tau = (capCol)*(cell.resMemCellAvg);
@@ -2095,7 +2362,172 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, const vect
 			
 	    } else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
 			leakage = 0;
-			if (conventionalSequential) {
+			if(parallelWrite){
+				double numReadCells = (int)ceil((double)numCol/numColMuxed);    // similar parameter as numReadCellPerOperationNeuro, which is for SRAM
+				int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
+				double capBL = lengthCol * 0.2e-15/1e-6;
+			
+				wlSwitchMatrix.CalculatePower(numColMuxed*numRow, 0, 1, 0);  //仅计算read-out阶段
+				
+				slSwitchMatrix.CalculatePower(0, (mulNor+addNor), 0, 3./numCol); //仅计算nor阶段
+
+				if (numColMuxed > 1) {
+					mux.CalculatePower(numColMuxed*numRow);	// Mux still consumes energy during row-by-row read
+					muxDecoder.CalculatePower(numColMuxed*numRow, 1);
+				}
+				
+	
+				multilevelSenseAmp.CalculatePower(columnResistance, numRow); //TODO 这里的columnReisistance会影响power的计算，意味着需要考虑实际的resistance，或者直接将其代替为某一固定值
+				multilevelSAEncoder.CalculatePower(numColMuxed*numRow);
+				
+
+				// Read
+				readDynamicEnergyArray = 0;
+				readDynamicEnergyArray += capBL * cell.readVoltage * cell.readVoltage * numReadCells; // Selected BLs activityColWrite
+				readDynamicEnergyArray += capRow2 * tech.vdd * tech.vdd * numRow *1; // Selected WL activityRowRead设置为1
+				readDynamicEnergyArray *= numColMuxed;
+				
+				readDynamicEnergy = 0;
+				readDynamicEnergy += wlNewSwitchMatrix.readDynamicEnergy;
+				readDynamicEnergy += wlSwitchMatrix.readDynamicEnergy;
+				readDynamicEnergy += ( ((numColMuxed > 1)==true? (mux.readDynamicEnergy + muxDecoder.readDynamicEnergy):0) );
+				readDynamicEnergy += multilevelSenseAmp.readDynamicEnergy;
+				readDynamicEnergy += multilevelSAEncoder.readDynamicEnergy;
+				readDynamicEnergy += shiftAddWeight.readDynamicEnergy + shiftAddInput.readDynamicEnergy;
+				readDynamicEnergy += readDynamicEnergyArray;
+				readDynamicEnergy += sarADC.readDynamicEnergy;
+
+				readDynamicEnergy += writeDynamicEnergyArray; //将矩阵的阵列写能耗计入 这一部分在processing Unit中计算
+				readDynamicEnergy += slSwitchMatrix.readDynamicEnergy;//将slSwitch矩阵的nor能耗计入
+				
+				readDynamicEnergyADC = readDynamicEnergyArray + multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy + sarADC.readDynamicEnergy;
+				readDynamicEnergyAccum = shiftAddWeight.readDynamicEnergy + shiftAddInput.readDynamicEnergy;
+				readDynamicEnergyOther = wlNewSwitchMatrix.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy + ( ((numColMuxed > 1)==true? (mux.readDynamicEnergy + muxDecoder.readDynamicEnergy):0) );
+				
+				// /* Transpose Peripheral for BP */
+				// if (trainingEstimation) {
+				// 	readDynamicEnergyAG = 0;
+				// 	if (layerNumber != 0) {
+				// 		if (parallelBP) {
+				// 			readDynamicEnergyArray = 0;
+				// 			readDynamicEnergyArray += capBL * cell.readVoltage * cell.readVoltage * numReadCells; // Selected BLs activityColWrite
+				// 			readDynamicEnergyArray += capRow2 * tech.vdd * tech.vdd * numRow * activityBPColRead; // Selected WL
+				// 			readDynamicEnergyArray *= numRowMuxedBP;
+							
+				// 			slSwitchMatrix.CalculatePower(numRowMuxedBP, 2*numWriteOperationPerRow*numRow*activityRowWrite, activityRowRead, activityColWrite);
+							
+				// 			if (numRowMuxedBP>1) {
+				// 				muxBP.CalculatePower(numRowMuxedBP);	// Mux still consumes energy during row-by-row read
+				// 				muxDecoderBP.CalculatePower(numRowMuxedBP, 1);
+				// 			}
+							
+				// 			if (SARADC) {
+				// 				sarADCBP.CalculatePower(columnResistance, 1);
+				// 			} else {
+				// 				multilevelSenseAmpBP.CalculatePower(columnResistance, 1);
+				// 				multilevelSAEncoderBP.CalculatePower(numRowMuxedBP);
+				// 			}
+							
+				// 			if (numCellPerSynapse > 1) {
+				// 				shiftAddBPWeight.CalculatePower(numRowMuxedBP);	
+				// 			}
+				// 			if (numReadPulseBP > 1) {
+				// 				shiftAddBPInput.CalculatePower(ceil(numRowMuxedBP/numCellPerSynapse));		
+				// 			}
+							
+				// 			readDynamicEnergyAG += slSwitchMatrix.readDynamicEnergy;
+				// 			readDynamicEnergyAG +=( ((numRowMuxedBP > 1)==true? (muxBP.readDynamicEnergy + muxDecoderBP.readDynamicEnergy):0) )/numReadPulseBP;
+				// 			readDynamicEnergyAG += multilevelSenseAmpBP.readDynamicEnergy;
+				// 			readDynamicEnergyAG += multilevelSAEncoderBP.readDynamicEnergy;
+				// 			readDynamicEnergyAG += shiftAddBPInput.readDynamicEnergy + shiftAddBPWeight.readDynamicEnergy;
+				// 			readDynamicEnergyAG += readDynamicEnergyArray;
+				// 			readDynamicEnergyAG += sarADCBP.readDynamicEnergy;
+							
+				// 			readDynamicEnergyADC += multilevelSenseAmpBP.readDynamicEnergy + multilevelSAEncoderBP.readDynamicEnergy + readDynamicEnergyArray + sarADCBP.readDynamicEnergy;
+				// 			readDynamicEnergyAccum += shiftAddBPInput.readDynamicEnergy + shiftAddBPWeight.readDynamicEnergy;
+				// 			readDynamicEnergyOther += slSwitchMatrix.readDynamicEnergy + ( ((numRowMuxedBP > 1)==true? (muxBP.readDynamicEnergy + muxDecoderBP.readDynamicEnergy):0) )/numReadPulseBP;
+							
+				// 			leakage += slSwitchMatrix.leakage;
+				// 			leakage += (muxBP.leakage+muxDecoderBP.leakage);
+				// 			leakage += multilevelSenseAmpBP.leakage;
+				// 			leakage += multilevelSAEncoderBP.leakage;
+				// 			leakage += shiftAddBPInput.leakage + shiftAddBPWeight.leakage;
+				// 		} else {
+				// 			readDynamicEnergyArray = 0;
+				// 			readDynamicEnergyArray += capBL * cell.readVoltage * cell.readVoltage * numReadCells; // Selected BLs activityColWrite
+				// 			readDynamicEnergyArray += capRow2 * tech.vdd * tech.vdd; // Selected WL
+				// 			readDynamicEnergyArray *= numRow * activityBPColRead * numRowMuxedBP;
+							
+				// 			slSwitchMatrix.CalculatePower(numRowMuxedBP*numCol*activityBPColRead, 2*numWriteOperationPerRow*numRow*activityRowWrite, activityRowRead, activityColWrite);
+							
+				// 			if (numRowMuxedBP>1) {
+				// 				muxBP.CalculatePower(numRowMuxedBP);	// Mux still consumes energy during row-by-row read
+				// 				muxDecoderBP.CalculatePower(numRowMuxedBP, 1);
+				// 			}
+							
+				// 			if (SARADC) {
+				// 				sarADCBP.CalculatePower(columnResistance, numCol*activityBPColRead);
+				// 			} else {
+				// 				multilevelSenseAmpBP.CalculatePower(columnResistance, numCol*activityBPColRead);
+				// 				if (avgWeightBit > 1) {
+				// 					multilevelSAEncoderBP.CalculatePower(numRowMuxedBP*numCol*activityBPColRead);
+				// 				}
+				// 			}
+
+				// 			dffBP.CalculatePower(numRowMuxedBP*numCol*activityBPColRead, ceil(numRow/numRowMuxedBP)*(adderBP.numBit+1)); 
+				// 			adderBP.CalculatePower(numRowMuxedBP*numCol*activityBPColRead, ceil(numRow/numRowMuxedBP));
+							
+				// 			if (numCellPerSynapse > 1) {
+				// 				shiftAddBPWeight.CalculatePower(numRowMuxedBP);	
+				// 			}
+				// 			if (numReadPulseBP > 1) {
+				// 				shiftAddBPInput.CalculatePower(ceil(numRowMuxedBP/numCellPerSynapse));		
+				// 			}
+							
+				// 			readDynamicEnergyAG += slSwitchMatrix.readDynamicEnergy;
+				// 			readDynamicEnergyAG += ( ((numRowMuxedBP > 1)==true? (muxBP.readDynamicEnergy + muxDecoderBP.readDynamicEnergy):0) )/numReadPulseBP;
+				// 			readDynamicEnergyAG += multilevelSenseAmpBP.readDynamicEnergy;
+				// 			readDynamicEnergyAG += multilevelSAEncoderBP.readDynamicEnergy;
+				// 			readDynamicEnergyAG += dffBP.readDynamicEnergy;
+				// 			readDynamicEnergyAG += adderBP.readDynamicEnergy;
+				// 			readDynamicEnergyAG += shiftAddBPInput.readDynamicEnergy + shiftAddBPWeight.readDynamicEnergy;
+				// 			readDynamicEnergyAG += readDynamicEnergyArray;
+				// 			readDynamicEnergyAG += sarADCBP.readDynamicEnergy;
+							
+				// 			readDynamicEnergyADC += multilevelSenseAmpBP.readDynamicEnergy + multilevelSAEncoderBP.readDynamicEnergy + readDynamicEnergyArray + sarADCBP.readDynamicEnergy;
+				// 			readDynamicEnergyAccum += dffBP.readDynamicEnergy + adderBP.readDynamicEnergy + shiftAddBPInput.readDynamicEnergy + shiftAddBPWeight.readDynamicEnergy;
+				// 			readDynamicEnergyOther += slSwitchMatrix.readDynamicEnergy + ( ((numRowMuxedBP > 1)==true? (muxBP.readDynamicEnergy + muxDecoderBP.readDynamicEnergy):0) )/numReadPulseBP;
+							
+				// 			leakage += slSwitchMatrix.leakage;
+				// 			leakage += (muxBP.leakage+muxDecoderBP.leakage);
+				// 			leakage += multilevelSenseAmpBP.leakage;
+				// 			leakage += multilevelSAEncoderBP.leakage;
+				// 			leakage += dffBP.leakage;
+				// 			leakage += adderBP.leakage;
+				// 			leakage += shiftAddBPInput.leakage + shiftAddBPWeight.leakage;
+				// 		}
+				// 	}
+				// }
+				
+				// Write
+				writeDynamicEnergyArray = writeDynamicEnergyArray;
+				writeDynamicEnergy = 0;
+				writeDynamicEnergy += wlNewSwitchMatrix.writeDynamicEnergy;
+				writeDynamicEnergy += wlSwitchMatrix.writeDynamicEnergy;
+				writeDynamicEnergy += slSwitchMatrix.writeDynamicEnergy;
+				writeDynamicEnergy += writeDynamicEnergyArray;
+				
+				// Leakage
+				leakage += wlSwitchMatrix.leakage;
+				leakage += wlNewSwitchMatrix.leakage;
+				leakage += slSwitchMatrix.leakage;
+				leakage += mux.leakage;
+				leakage += muxDecoder.leakage;
+				leakage += multilevelSenseAmp.leakage;
+				leakage += multilevelSAEncoder.leakage;
+				leakage += shiftAddWeight.leakage + shiftAddInput.leakage;
+			}
+			else if (conventionalSequential) {
 				double numReadCells = (int)ceil((double)numCol/numColMuxed);    // similar parameter as numReadCellPerOperationNeuro, which is for SRAM
 				double numWriteCells = (int)ceil((double)numCol/*numWriteColMuxed*/); 
 				int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);

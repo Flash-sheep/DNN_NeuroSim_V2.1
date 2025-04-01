@@ -68,13 +68,18 @@ public:
 	
 	int neuro, multifunctional, parallelWrite, parallelRead;
 	int numlut, numColMuxed, numWriteColMuxed, levelOutput, avgWeightBit, numBitInput, numRowMuxedAG, levelOutputAG, numRowMuxedWG, levelOutputWG;
-	int numRowSubArray, numColSubArray, numRowSubArrayWG, numColSubArrayWG;
+	int numRowSubArray, numColSubArray, numRowSubArrayWG, numColSubArrayWG, numRowSubArrayReal, numColSubArrayReal; // 原本的numRowSubArray 和 numColSubArray用来表征SubArray上可用于存储权重矩阵的大小，Real 表示实际的SubArray总大小
 	int cellBit, synapseBit;
 	int speedUpDegree, dramType, batchSize, numIteration;
 	
 	int XNORparallelMode, XNORsequentialMode, BNNparallelMode, BNNsequentialMode, conventionalParallel, conventionalSequential; 
 	int numRowPerSynapse, numColPerSynapse;
 	double AR, Rho, wireLengthRow, wireLengthCol, unitLengthWireResistance, wireResistanceRow, wireResistanceCol;
+
+	int d_model, d_k, d_v, n_heads, batch_size, max_length, d_hidden;
+	int input_len, output_len; //暂时只考虑一个query的情况，假设该query的输入长度和需求输出长度
+	int numDecoderBlock; // decoder block的个数
+	int digital; 
 };
 
 #endif

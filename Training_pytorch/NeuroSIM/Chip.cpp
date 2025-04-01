@@ -628,7 +628,7 @@ vector<double> ChipCalculateArea(InputParameter& inputParameter, Technology& tec
 
 
 double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech, MemCell& cell, int layerNumber, const string &newweightfile, const string &oldweightfile, const string &inputfile, bool followedByMaxPool, 
-							const vector<vector<double> > &netStructure, const vector<int> &markNM, const vector<vector<double> > &numTileEachLayer, const vector<vector<double> > &utilizationEachLayer, 
+							const vector<vector<double> > &netStructure, const vector<int> &markNM, int digital , int seq_len, int seq_len_total , const vector<vector<double> > &numTileEachLayer, const vector<vector<double> > &utilizationEachLayer, 
 							const vector<vector<double> > &speedUpEachLayer, const vector<vector<double> > &tileLocaEachLayer, double numPENM, double desiredPESizeNM, double desiredTileSizeCM, 
 							double desiredPESizeCM, double CMTileheight, double CMTilewidth, double NMTileheight, double NMTilewidth, int numArrayWriteParallel,
 							double *readLatency, double *readDynamicEnergy, double *leakage, double *readLatencyAG, double *readDynamicEnergyAG, double *readLatencyWG, double *readDynamicEnergyWG, 
@@ -649,13 +649,19 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	int weightMatrixCol = netStructure[l][5]*numColPerSynapse;
 	
 	// load in whole file 
+
 	vector<vector<double> > inputVector;
-	inputVector = LoadInInputData(inputfile); 
 	vector<vector<double> > newMemory;
-	newMemory = LoadInWeightData(newweightfile, numRowPerSynapse, numColPerSynapse, param->maxConductance, param->minConductance);
 	vector<vector<double> > oldMemory;
-	oldMemory = LoadInWeightData(oldweightfile, numRowPerSynapse, numColPerSynapse, param->maxConductance, param->minConductance);
 	
+	if(digital == 0){
+		inputVector = LoadInInputData(inputfile); 
+		newMemory = LoadInWeightData(newweightfile, numRowPerSynapse, numColPerSynapse, param->maxConductance, param->minConductance);
+		oldMemory = LoadInWeightData(oldweightfile, numRowPerSynapse, numColPerSynapse, param->maxConductance, param->minConductance);
+	}
+	
+	
+
 	*readLatency = 0;
 	*readDynamicEnergy = 0;
 	*readLatencyAG = 0;
@@ -702,7 +708,27 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 		totalNumTile += numTileEachLayer[0][i] * numTileEachLayer[1][i];
 	}
 	
-	if (markNM[l] == 0) {   // conventional mapping
+	if(digital){ //进行数字计算的transformer推理，完成指定序列输入和指定KV缓存大小下的输出一个token的过程仿真
+		int numPE = 3;
+		for(int i = 0; i< param->numDecoderBlock;i++){
+			vector<vector<double> > tileMemoryOld;
+			vector<vector<double> > tileMemory;
+			vector<vector<double> > tileInput;
+			TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, markNM[l], true, seq_len, seq_len_total, layerNumber, , desiredPESizeCM, 1, 1,
+									0, 0, 0, tech, cell, &tileReadLatency, &tileReadDynamicEnergy, &tileLeakage,
+									&tileReadLatencyAG, &tileReadDynamicEnergyAG, &tileWriteLatencyWU, &tileWriteDynamicEnergyWU,
+									&tilebufferLatency, &tilebufferDynamicEnergy, &tileicLatency, &tileicDynamicEnergy, 
+									&tileLatencyADC, &tileLatencyAccum, &tileLatencyOther, &tileEnergyADC, &tileEnergyAccum, &tileEnergyOther, 
+									&tileReadLatencyPeakFW, &tileReadDynamicEnergyPeakFW, &tileReadLatencyPeakAG, &tileReadDynamicEnergyPeakAG,
+									&tileWriteLatencyPeakWU, &tileWriteDynamicEnergyPeakWU);
+			
+			*readLatency+=tileReadLatency;
+			*readDynamicEnergy+=tileReadDynamicEnergy;
+		}
+		//buffer开销
+		//bus开销
+	}
+	else if (markNM[l] == 0) {   // conventional mapping
 		for (int i=0; i<ceil((double) netStructure[l][2]*(double) netStructure[l][3]*(double) netStructure[l][4]*(double) numRowPerSynapse/desiredTileSizeCM); i++) {       // # of tiles in row
 			for (int j=0; j<ceil((double) netStructure[l][5]*(double) numColPerSynapse/(double) desiredTileSizeCM); j++) {   // # of tiles in Column
 				int numRowMatrix = min(desiredTileSizeCM, weightMatrixRow-i*desiredTileSizeCM);

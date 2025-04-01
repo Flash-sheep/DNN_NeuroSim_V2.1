@@ -39,6 +39,7 @@
 #include <cmath>
 #include <iostream>
 #include <fstream>
+#include <random> //用于生成权重矩阵
 #include <string>
 #include <stdlib.h>
 #include <vector>
@@ -76,7 +77,10 @@ Sigmoid *sigmoidNM;
 BitShifter *reLuNM;				   
 
 
-void TileInitialize(InputParameter& inputParameter, Technology& tech, MemCell& cell, double _numPENM, double _peSizeNM, double _numPECM, double _peSizeCM){
+static int seq_len_total =0; //用于记录当前已经生成的总token数量，用于确认k v 的大小
+
+
+void TileInitialize(InputParameter& inputParameter, Technology& tech, MemCell& cell, double _numPENM, double _peSizeNM, double _numPECM, double _peSizeCM, bool digital ){
 	
 	subArrayInPE = new SubArray(inputParameter, tech, cell);
 	inputBufferNM = new Buffer(inputParameter, tech, cell);
@@ -112,8 +116,15 @@ void TileInitialize(InputParameter& inputParameter, Technology& tech, MemCell& c
 	/*** Initialize ProcessingUnit ***/
 	numSubArrayNM = ceil((double)peSizeNM/(double)param->numRowSubArray)*ceil((double)peSizeNM/(double)param->numColSubArray);
 	numSubArrayCM = ceil((double)peSizeCM/(double)param->numRowSubArray)*ceil((double)peSizeCM/(double)param->numColSubArray);
-	ProcessingUnitInitialize(subArrayInPE, inputParameter, tech, cell, ceil(sqrt(numSubArrayNM)), ceil(sqrt(numSubArrayNM)), ceil(sqrt(numSubArrayCM)), ceil(sqrt(numSubArrayCM)));
-    
+	if(!digital){ //模拟计算的初始化方式
+		ProcessingUnitInitialize(subArrayInPE, inputParameter, tech, cell, ceil(sqrt(numSubArrayNM)), ceil(sqrt(numSubArrayNM)), ceil(sqrt(numSubArrayCM)), ceil(sqrt(numSubArrayCM)), digital);
+	}
+	else{
+		//数字计算初始化方式不太一样 默认通过CM来传递subArray的数量，对于transformer架构下，每个pe存储一个decoder 中的layer，因此需要确保能够存储完全，同时需要保证满足足够的KV存储空间
+		//在pe层面不进行优化处理，只获取peSize参数，peSize参数由高层算法决定，其定义为每个pe其用于存储权重的大小。
+		ProcessingUnitInitialize(subArrayInPE, inputParameter, tech, cell, ceil(sqrt(numSubArrayNM)), ceil(sqrt(numSubArrayNM)), ceil(sqrt(numSubArrayCM)), ceil(sqrt(numSubArrayCM)), digital);
+	}
+	
 	if (param->novelMapping) {
 		if (param->parallelRead) {
 			accumulationNM->Initialize(numPENM, ceil((double)log2((double)param->levelOutput))+param->numBitInput+param->numColPerSynapse+1+ceil((double)log2((double)peSizeNM/(double)param->numRowSubArray)), 
@@ -333,7 +344,8 @@ vector<double> TileCalculateArea(double numPE, double peSize, bool NMTile, doubl
 }
 
 
-void TileCalculatePerformance(const vector<vector<double> > &newMemory, const vector<vector<double> > &oldMemory, const vector<vector<double> > &inputVector, int novelMap, int layerNumber, double numPE, 
+void TileCalculatePerformance(const vector<vector<double> > &newMemory, const vector<vector<double> > &oldMemory, const vector<vector<double> > &inputVector, 
+							int novelMap, bool digital, int seq_len ,int seq_len_total, int layerNumber, double numPE, 
 							double peSize, int speedUpRow, int speedUpCol, int weightMatrixRow, int weightMatrixCol, int numInVector, Technology& tech, MemCell& cell, 
 							double *readLatency, double *readDynamicEnergy, double *leakage, double *readLatencyAG, double *readDynamicEnergyAG, double *writeLatencyWU, double *writeDynamicEnergyWU,
 							double *bufferLatency, double *bufferDynamicEnergy, double *icLatency, double *icDynamicEnergy,
@@ -378,7 +390,157 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 	*coreLatencyAccum = 0;
 	*coreLatencyOther = 0;
 	
-	if (!novelMap) {   // conventional Mapping
+	if(digital){ //使用transformer架构的数字计算 此时Tile代表一个decoder block，需要初始化各个pe，并控制其数据传输。
+
+		//需要区分此时处于的阶段，如果为第一次推理，需要调控每个pe的输入信号，让其写入矩阵。由于这里不考虑写入矩阵的延迟，因此不做处理
+
+		int seq_len = inputVector[0].size(); //TODO获取序列长度，由于这里不需要实际的Input输入，输入向量只用来表征token的个数，在每个pe传递一个fake input，用于适配其中模拟计算的代码。
+		
+		vector<vector<double> > pEMemoryOld; //无数据
+		vector<vector<double> > pEMemory; //由于无法获取处理过程中的实际权重矩阵，因此采用随机数生成的方式
+		vector<vector<double> > pEInput; // fake input，此处的物理意义并不是输入，而是代表矩阵读出时激活的行数 ，用于适配其中的mux的功耗计算。 input直接设置为一个全1的列，行数与权重行相对应，列数与输入token数相对应
+
+
+		//Wq、Wk、Wv矩阵依次映射到不同的pe上 矩阵维度（d_model, d_k*n_heads），同时由于数字计算，因此矩阵需要转置，则映射矩阵维度为（d_k*n_heads,d_model）
+		//在行上需要多bit存储，因此最终矩阵维度为  
+		weightMatrixRow = param->d_k*param->n_heads;
+		weightMatrixCol = param->d_model*param->synapseBit;
+		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
+		numInVector = seq_len; 
+		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
+											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
+											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
+											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
+											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
+											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
+											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
+		
+		*readLatency += PEreadLatency*2; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
+		*readDynamicEnergy += PEreadDynamicEnergy*2;
+		//其他的延迟和能耗暂时不考虑
+
+		// Wv矩阵
+		weightMatrixRow = param->d_v*param->n_heads;
+		weightMatrixCol = param->d_model*param->synapseBit;
+		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
+		numInVector = seq_len; 
+		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
+											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
+											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
+											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
+											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
+											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
+											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
+		
+		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
+		*readDynamicEnergy += PEreadDynamicEnergy;
+		//其他的延迟和能耗暂时不考虑
+
+
+		// K缓存矩阵 K矩阵存储的是转置后的版本
+		weightMatrixRow = seq_len_total;
+		weightMatrixCol = param->d_k*param->n_heads*param->synapseBit;
+		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
+		numInVector = seq_len; 
+		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
+											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
+											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
+											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
+											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
+											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
+											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
+		
+		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
+		*readDynamicEnergy += PEreadDynamicEnergy;
+		//其他的延迟和能耗暂时不考虑
+
+		//SoftMax矩阵
+		//S为seq_len*seq_len_total //设计起来较为复杂，暂时考虑引入其他电路元件来处理，暂时忽略
+
+		
+		// V缓存矩阵 
+		weightMatrixRow = param->d_v*param->n_heads;
+		weightMatrixCol = seq_len_total*param->synapseBit;
+		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
+		numInVector = seq_len; 
+		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
+											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
+											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
+											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
+											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
+											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
+											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
+		
+		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
+		*readDynamicEnergy += PEreadDynamicEnergy;
+		//其他的延迟和能耗暂时不考虑
+
+		
+
+		//linear layer
+		//线性层需要将d_v*n_heads 映射到 d_model
+		weightMatrixRow = param->d_model;
+		weightMatrixCol = param->d_v*param->n_heads*param->synapseBit;
+		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
+		numInVector = seq_len; 
+		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
+											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
+											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
+											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
+											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
+											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
+											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
+		
+		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
+		*readDynamicEnergy += PEreadDynamicEnergy;
+		//其他的延迟和能耗暂时不考虑
+
+		//FFN1层 为 d_model*d_hidden
+		weightMatrixRow = param->d_hidden;
+		weightMatrixCol = param->d_model*param->synapseBit;
+		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
+		numInVector = seq_len; 
+		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
+											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
+											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
+											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
+											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
+											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
+											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
+		
+		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
+		*readDynamicEnergy += PEreadDynamicEnergy;
+		//其他的延迟和能耗暂时不考虑
+
+		//FFN2层 为 d_hidden*d_model
+		weightMatrixRow = param->d_model;
+		weightMatrixCol = param->d_hidden*param->synapseBit;
+		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
+		numInVector = seq_len; 
+		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
+											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
+											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
+											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
+											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
+											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
+											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
+		
+		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
+		*readDynamicEnergy += PEreadDynamicEnergy;
+		//其他的延迟和能耗暂时不考虑
+
+
+
+
+	}
+	else if (!novelMap) {   // conventional Mapping
 		if (speedUpRow*speedUpCol > 1) {
 			if ((speedUpRow >= numPE) && (speedUpCol >= numPE)) {
 				// duplication in PE or subArray --> tell each PE to take the whole assigned weight  --> "fully" duplication
@@ -390,7 +552,7 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 				vector<vector<double> > pEInput;
 				pEInput = CopyPEInput(inputVector, 0, numInVector, weightMatrixRow);
 				
-				ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, pEMemory, pEMemoryOld, pEInput, ceil((double)speedUpRow/(double)numPE), ceil((double)speedUpCol/(double)numPE), 
+				ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, false, 0, pEMemory, pEMemoryOld, pEInput, ceil((double)speedUpRow/(double)numPE), ceil((double)speedUpCol/(double)numPE), 
 											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
 											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
 											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
@@ -442,7 +604,7 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 							vector<vector<double> > pEInput;
 							pEInput = CopyPEInput(inputVector, i*peSize, numInVector, numRowMatrix);
 							
-							ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, pEMemory, pEMemoryOld, pEInput, 1, 1, 
+							ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, false, 0, pEMemory, pEMemoryOld, pEInput, 1, 1, 
 												numSubArrayRow, numSubArrayCol, numRowMatrix, numColMatrix, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
 												&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
 												&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
@@ -528,7 +690,7 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 						vector<vector<double> > pEInput;
 						pEInput = CopyPEInput(inputVector, i*peSize, numInVector, numRowMatrix);
 							
-						ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, pEMemory, pEMemoryOld, pEInput, 1, 1, numSubArrayRow, numSubArrayCol, numRowMatrix,
+						ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, false, 0, pEMemory, pEMemoryOld, pEInput, 1, 1, numSubArrayRow, numSubArrayCol, numRowMatrix,
 												numColMatrix, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
 												&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
 												&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
@@ -687,7 +849,7 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 			vector<vector<double> > pEInput;
 			pEInput = CopyPEInput(inputVector, location, numInVector, weightMatrixRow/numPE);
 			
-			ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, true, pEMemory, pEMemoryOld, pEInput, 1, 1, numSubArrayRow, numSubArrayCol, weightMatrixRow/numPE,
+			ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, true, false, 0, pEMemory, pEMemoryOld, pEInput, 1, 1, numSubArrayRow, numSubArrayCol, weightMatrixRow/numPE,
 									weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
 									&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
 									&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy, 
@@ -879,3 +1041,40 @@ vector<vector<double> > CopyPEInput(const vector<vector<double> > &orginal, int 
 	copy.clear();
 }
 
+std::vector<std::vector<int>> generateRandomMatrix(int rows, int cols) {
+    std::random_device rd;  // 用于获取随机种子
+    std::mt19937 gen(rd()); // 标准 mersenne_twister_engine
+    std::uniform_int_distribution<> dis(0, 1); // 生成0或1的均匀分布
+
+    std::vector<std::vector<int>> matrix(rows, std::vector<int>(cols));
+
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            matrix[i][j] = dis(gen); // 生成随机0或1
+        }
+    }
+
+    return matrix;
+}
+
+std::vector<std::vector<double>> generateRandomWeightMatrix(int rows, int cols){
+	vector<vector<int>> bitMatrix = generateRandomMatrix(rows,cols);
+	vector<vector<double>> weightMatrix(rows,vector<double>(cols));
+	for(int i =0; i<bitMatrix.size();i++){
+		for(int j =0; j<bitMatrix[0].size();j++){
+			if(bitMatrix[i][j] == 1){
+				weightMatrix[i][j] = param->maxConductance;
+			}
+			else{
+				weightMatrix[i][j] = param->minConductance;
+			}
+		}
+	}
+	return weightMatrix;
+}
+
+std::vector<std::vector<double>> generateOnesMatrix(int rows, int cols) {
+    // 初始化一个大小为 rows x cols 的矩阵，所有元素为1
+    std::vector<std::vector<double>> matrix(rows, std::vector<double>(cols, 1));
+    return matrix;
+}

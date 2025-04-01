@@ -69,7 +69,10 @@ Bus *busOutputCM;
 DFF *bufferInputCM;
 DFF *bufferOutputCM;
 
-void ProcessingUnitInitialize(SubArray *& subArray, InputParameter& inputParameter, Technology& tech, MemCell& cell, int _numSubArrayRowNM, int _numSubArrayColNM, int _numSubArrayRowCM, int _numSubArrayColCM) {
+
+
+
+void ProcessingUnitInitialize(SubArray *& subArray, InputParameter& inputParameter, Technology& tech, MemCell& cell, int _numSubArrayRowNM, int _numSubArrayColNM, int _numSubArrayRowCM, int _numSubArrayColCM, bool DCpe) {
 	
 	/*** circuit level parameters ***/
 	switch(param->memcelltype) {
@@ -279,7 +282,7 @@ vector<double> ProcessingUnitCalculateArea(SubArray *subArray, int numSubArrayRo
 }
 
 
-double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, MemCell& cell, int layerNumber, bool NMpe, 
+double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, MemCell& cell, int layerNumber, bool NMpe, bool DCpe, int DCpeMode, 
 											const vector<vector<double> > &newMemory, const vector<vector<double> > &oldMemory, const vector<vector<double> > &inputVector,
 											int arrayDupRow, int arrayDupCol, int numSubArrayRow, int numSubArrayCol, int weightMatrixRow,
 											int weightMatrixCol, int numInVector, double *readLatency, double *readDynamicEnergy, double *leakage, 
@@ -318,7 +321,147 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, 
 	double subArrayReadLatency, subArrayReadDynamicEnergy, subArrayLeakage, subArrayLatencyADC, subArrayLatencyAccum, subArrayLatencyOther;
 	double subArrayReadLatencyAG, subArrayReadDynamicEnergyAG, subArrayWriteLatencyWU, subArrayWriteDynamicEnergyWU;
 	
-	if (arrayDupRow*arrayDupCol > 1) {
+	if(DCpe){
+		//在DCpe模式下，直接将整个矩阵映射到subArray上 TODO 需要考虑矩阵在token生成模式下的增长
+		// weight matrix is further partitioned inside PE (among subArray) --> no duplicated
+		
+		//TODO
+		//理论上需要根据DCpeMode的不同实现不同的工作逻辑，在写入模式时需要接收输入的矩阵并且覆写到subArray上；在缓存模式时无需接收输入矩阵，只需要传递输入向量到对应的SubArray上即可；
+		// 在半写入模式时需要接收输入的列和行向量并依次写入由weightMatrixRow和weightMatrixCol所指定的行和列的位置
+		// 由于这些写入操作实际上不会影响性能，因此不做处理
+		// switch (DCpeMode)
+		// {
+		// case constant expression:
+		// 	/* code */
+		// 	break;
+		
+		// default:
+		// 	break;
+		// }
+		for (int i=0; i<ceil((double) weightMatrixRow/(double) param->numRowSubArray); i++) {
+			for (int j=0; j<ceil((double) weightMatrixCol/(double) param->numColSubArray); j++) {
+				if ((i*param->numRowSubArray < weightMatrixRow) && (j*param->numColSubArray < weightMatrixCol) && (i*param->numRowSubArray < weightMatrixRow) ) {
+
+					//矩阵划分上依旧采用基于param->大小的划分方式，实际subArray上还有Input、output以及中间缓存的存储区域
+					int numRowMatrix = min(param->numRowSubArray, weightMatrixRow-i*param->numRowSubArray);
+					int numColMatrix = min(param->numColSubArray, weightMatrixCol-j*param->numColSubArray);
+					// assign weight and input to specific subArray
+					// vector<vector<double> > subArrayMemoryOld; //不考虑写入，所以只有新权重矩阵
+					// subArrayMemoryOld = CopySubArray(oldMemory, i*param->numRowSubArray, j*param->numColSubArray, numRowMatrix, numColMatrix);
+
+					// 理论上这里需要
+					vector<vector<double> > subArrayMemory; //至于subArrayMemory，使用一个随机生成的矩阵来代替原本的权重矩阵 TODO这里会影响到columnResistance的计算，但是对整体精度影响应该不大
+					subArrayMemory = CopySubArray(newMemory, i*param->numRowSubArray, j*param->numColSubArray, numRowMatrix, numColMatrix);
+					//输入向量理论上应该为一个token，如果为多个token
+
+					//input的划分方式不在基于行，而基于列
+					vector<vector<double> > fakeSubArrayInput; //由于这里获取输入的作用是计算columnResistance，因此获取一个全1的输入来表征Input的大小，同时让行全激活。 TODO这里修改input的含义，input的列数代表input数量（原本为input的列数/param-numBitInput)
+					fakeSubArrayInput = CopySubInput(inputVector, i*param->numRowSubArray, numInVector, numRowMatrix);
+					
+					subArrayReadLatency = 0;
+					subArrayLatencyADC = 0;
+					subArrayLatencyAccum = 0;
+					subArrayLatencyOther = 0;
+					subArrayReadLatencyAG = 0;
+					subArrayReadDynamicEnergyAG = 0;
+					
+					// if (param->trainingEstimation) {
+					// 	double activityColWrite = 0;
+					// 	double activityRowWrite = 0;
+					// 	int numWritePulseAVG=0;
+					// 	int totalNumWritePulse = 0;
+					// 	double writeDynamicEnergyArray = 0;
+						
+					// 	GetWriteUpdateEstimation(subArray, tech, cell, subArrayMemory, subArrayMemoryOld, 
+					// 		&activityColWrite, &activityRowWrite, &numWritePulseAVG, &totalNumWritePulse, &writeDynamicEnergyArray);
+						
+					// 	subArray->activityColWrite = activityColWrite;
+					// 	subArray->activityRowWrite = activityRowWrite;
+					// 	subArray->numWritePulseAVG = numWritePulseAVG;
+					// 	subArray->totalNumWritePulse = totalNumWritePulse;
+					// 	subArray->writeDynamicEnergyArray = writeDynamicEnergyArray;
+					// 	subArray->layerNumber = layerNumber;
+					// }
+
+					double writeDynamicEnergyArray = 0;
+					int addNor = 0;
+					int mulNor = 0;
+					GetArrayEstimation(subArray,tech,cell,numRowMatrix,numColMatrix,&mulNor,&addNor,&writeDynamicEnergyArray);
+					subArray->addNor = addNor;
+					subArray->mulNor = mulNor;
+					subArray->writeDynamicEnergyArray = writeDynamicEnergyArray;
+
+					for (int k=0; k<numInVector; k++) {                 // calculate single subArray through the total input vectors
+						double activityRowRead = 0;
+						vector<double> input;
+						input = GetInputVector(fakeSubArrayInput, k, &activityRowRead);
+						subArray->activityRowRead = activityRowRead;
+						
+						int cellRange = pow(2, param->cellBit);
+						if (param->parallelRead) {
+							subArray->levelOutput = param->levelOutput;               // # of levels of the multilevelSenseAmp output
+						} else {
+							subArray->levelOutput = cellRange;
+						}
+						
+						vector<double> columnResistance;
+						columnResistance = GetColumnResistance(input, subArrayMemory, cell, param->parallelRead, subArray->resCellAccess);
+						
+						vector<double> rowResistance;
+						rowResistance = GetRowResistance(input, subArrayMemory, cell, param->parallelBP, subArray->resCellAccess);
+						
+						subArray->CalculateLatency(1e20, columnResistance, rowResistance);
+						subArray->CalculatePower(columnResistance, rowResistance);
+						
+						subArrayReadLatency += subArray->readLatency;
+						*readDynamicEnergy += subArray->readDynamicEnergy;
+						subArrayLeakage = subArray->leakage;
+						subArrayReadLatencyAG += subArray->readLatencyAG*((param->trainingEstimation)==true? 1:0);
+						*readDynamicEnergyAG += subArray->readDynamicEnergyAG*((param->trainingEstimation)==true? 1:0);
+						
+						subArrayLatencyADC += subArray->readLatencyADC;
+						subArrayLatencyAccum += subArray->readLatencyAccum;
+						subArrayLatencyOther += subArray->readLatencyOther;
+						
+						*coreEnergyADC += subArray->readDynamicEnergyADC;
+						*coreEnergyAccum += subArray->readDynamicEnergyAccum;
+						*coreEnergyOther += subArray->readDynamicEnergyOther;
+						
+					}
+					// accumulate write latency as array need to be write sequentially (worst case)
+					// limitation by on-chip buffer, write latency will be divided by numArrayWriteParallel (real case)
+					*writeLatencyWU += subArray->writeLatency*((param->trainingEstimation)==true? 1:0);
+					*writeDynamicEnergyWU += subArray->writeDynamicEnergy*((param->trainingEstimation)==true? 1:0);
+					*readLatency = MAX(subArrayReadLatency, (*readLatency));
+					*readLatencyAG = MAX(subArrayReadLatencyAG, (*readLatencyAG));
+					*coreLatencyADC = MAX(subArrayLatencyADC, (*coreLatencyADC));
+					*coreLatencyAccum = MAX(subArrayLatencyAccum, (*coreLatencyAccum));
+					*coreLatencyOther = MAX(subArrayLatencyOther, (*coreLatencyOther));
+				}
+			}
+		}
+		if (NMpe) {
+			adderTreeNM->CalculateLatency((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse), ceil((double) weightMatrixRow/(double) param->numRowSubArray), 0);
+			adderTreeNM->CalculatePower((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse), ceil((double) weightMatrixRow/(double) param->numRowSubArray));
+			*readLatency += adderTreeNM->readLatency;
+			*readLatencyAG += adderTreeNM->readLatency*((param->trainingEstimation)&&(layerNumber!=0)==true? 1:0);
+			*coreLatencyAccum += adderTreeNM->readLatency*((param->trainingEstimation)&&(layerNumber!=0)==true? 2:1);
+			*readDynamicEnergy += adderTreeNM->readDynamicEnergy;
+			*readDynamicEnergyAG += adderTreeNM->readDynamicEnergy*((param->trainingEstimation)&&(layerNumber!=0)==true? 1:0);
+			*coreEnergyAccum += adderTreeNM->readDynamicEnergy*((param->trainingEstimation)&&(layerNumber!=0)==true? 2:1);
+		} else {
+			//TODO 这里需要修改
+			adderTreeCM->CalculateLatency((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse), ceil((double) weightMatrixRow/(double) param->numRowSubArray), 0);
+			adderTreeCM->CalculatePower((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse), ceil((double) weightMatrixRow/(double) param->numRowSubArray));
+			*readLatency += adderTreeCM->readLatency;
+			*readLatencyAG += adderTreeCM->readLatency*((param->trainingEstimation)&&(layerNumber!=0)==true? 1:0);
+			*coreLatencyAccum += adderTreeCM->readLatency*((param->trainingEstimation)&&(layerNumber!=0)==true? 2:1);
+			*readDynamicEnergy += adderTreeCM->readDynamicEnergy;
+			*readDynamicEnergyAG += adderTreeCM->readDynamicEnergy*((param->trainingEstimation)&&(layerNumber!=0)==true? 1:0);
+			*coreEnergyAccum += adderTreeCM->readDynamicEnergy*((param->trainingEstimation)&&(layerNumber!=0)==true? 2:1);
+		}
+	}
+	else if (arrayDupRow*arrayDupCol > 1) {
 		// weight matrix is duplicated among subArray
 		if (arrayDupRow < numSubArrayRow || arrayDupCol < numSubArrayCol) {
 			// a couple of subArrays are mapped by the matrix
@@ -993,3 +1136,25 @@ void GetWriteUpdateEstimation(SubArray *subArray, Technology& tech, MemCell& cel
 	}
 }
 
+void GetArrayEstimation(SubArray *subArray, Technology &tech, MemCell &cell, const int weightMatrixRow, const int weightMatrixCol,int *mulNor, int *addNor, double *writeDynamicEnergyArray)  //需要根据矩阵的大小以及对应的subarray计算所需的mulNor次数、addNor次数以及阵列写能耗
+{
+
+	*writeDynamicEnergyArray = 0;
+
+	int addNorPerOp = 12 * param->synapseBit;
+	int mulNorPerOp = 6.5*param->synapseBit*param->synapseBit-7.5*param->synapseBit-2;
+
+	*addNor = ceil(weightMatrixCol/param->synapseBit)*addNorPerOp; //numColSubArray和numRowSubArray表征当前subArray中逻辑上的存储矩阵大小
+	*mulNor = ceil(weightMatrixCol/param->synapseBit)*mulNorPerOp; //这里weightMatrixCol本身是包含了bit的，因此需要计算出实际的矩阵列数
+
+	int totalWritePulse = (*addNor)+(*mulNor); //总共进行的nor操作次数，计算能耗时，出于简单考虑只计算该部分。
+	// calculate WL BL and SL energy
+
+	//NOR
+	*writeDynamicEnergyArray += subArray->capRow1 * cell.writeVoltage / 2 * cell.writeVoltage / 2 * param->numRowSubArrayReal;																																																	  // Selected WL
+	*writeDynamicEnergyArray += 0; //unselected WL 为0 其他没有选择的行是否需要charge，理论上需要，不然的话会有电压差，在给定的位置进行写入
+	*writeDynamicEnergyArray += subArray->capCol * cell.writeVoltage / 2 * cell.writeVoltage / 2 * param->numColSubArrayReal;															  // Unselected BLs
+	*writeDynamicEnergyArray += subArray->capCol * cell.writeVoltage * cell.writeVoltage * 2*totalWritePulse; 					//selected BLs 
+	*writeDynamicEnergyArray += cell.writeVoltage * cell.writeVoltage / (abs(1 / param->maxConductance + 1 / param->minConductance) / 2) * cell.writePulseWidth * weightMatrixRow/2 *totalWritePulse; //电阻改变消耗的能量 假设一次nor有一半的电阻转变
+	//已选择的行上未选择的电阻没有消耗能量，因为两端电压相同
+}

@@ -87,6 +87,9 @@ public:
 	bool initialized;	   // Initialization flag
 	int numRow;			   // Number of rows
 	int numCol;			   // Number of columns
+
+	int mulNor; 			// Number of Nor times for Mul op
+	int addNor;			// Number of Nor times for Add op
 	
 	int numColMuxed;	   // How many columns share 1 read circuit (for neuro mode with analog RRAM) or 1 S/A (for memory mode or neuro mode with digital RRAM)
 	int numWriteColMuxed;	// // How many columns share 1 write column decoder driver (for memory or neuro mode with digital RRAM)
@@ -143,7 +146,7 @@ public:
 	int numReadCellPerOperationFPGA;    // Parameter for SRAM
 	int numReadCellPerOperationMemory;  // Parameter for SRAM
 	int numReadCellPerOperationNeuro;   // Parameter for SRAM (use numBitPerCell cells to represent one D)
-	bool parallelWrite; // Parameter for crossbar RRAM in neuro mode
+	bool parallelWrite; // Parameter for crossbar RRAM in neuro mode //在这里用于标记是否使用数字计算
 	bool FPGA;
 	bool LUT_dynamic;   // Parameter for FPGA
 	bool backToBack;    // Parameter for FPGA Mux (2 Mux triangles can combine into a Mux rectangle)
