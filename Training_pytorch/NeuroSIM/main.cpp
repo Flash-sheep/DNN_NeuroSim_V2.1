@@ -247,16 +247,17 @@ int main(int argc, char * argv[]) {
 	if(!param->digital){ //暂时不计算面积开销
 		chipAreaResults = ChipCalculateArea(inputParameter, tech, cell, desiredNumTileNM, numPENM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM, numTileRow, 
 			&chipHeight, &chipWidth, &CMTileheight, &CMTilewidth, &NMTileheight, &NMTilewidth);	
+		chipArea = chipAreaResults[0];
+		chipAreaIC = chipAreaResults[1];
+		chipAreaADC = chipAreaResults[2];
+		chipAreaAccum = chipAreaResults[3];
+		chipAreaOther = chipAreaResults[4];
+		chipAreaWG = chipAreaResults[5];
+		chipAreaArray = chipAreaResults[6];
 	}
 	
 
-	chipArea = chipAreaResults[0];
-	chipAreaIC = chipAreaResults[1];
-	chipAreaADC = chipAreaResults[2];
-	chipAreaAccum = chipAreaResults[3];
-	chipAreaOther = chipAreaResults[4];
-	chipAreaWG = chipAreaResults[5];
-	chipAreaArray = chipAreaResults[6];
+	
 
 	double chipReadLatency = 0;
 	double chipReadDynamicEnergy = 0;
@@ -350,7 +351,64 @@ int main(int argc, char * argv[]) {
 		cout << "Error: the breakdown file cannot be opened!" << endl;
 	}
 	
-	if (! param->pipeline) {
+	if(param->digital){ //进行数字计算，完成一个query的完整推理流程或者部分推理流程
+		if(param->digital == 1){
+			//进行完整推理流程
+			//prefill
+			int seq_len = param->input_len;
+			int seq_len_total = seq_len;
+			ChipCalculatePerformance(inputParameter, tech, cell, 0, "", "", "", 0,
+				netStructure, markNM, 1, seq_len, seq_len_total, numTileEachLayer, utilizationEachLayer, speedUpEachLayer, tileLocaEachLayer,
+				numPENM, desiredPESizeNM, desiredTileSizeCM, desiredPESizeCM, CMTileheight, CMTilewidth, NMTileheight, NMTilewidth, numArrayWriteParallel,
+				&layerReadLatency, &layerReadDynamicEnergy, &tileLeakage, &layerReadLatencyAG, &layerReadDynamicEnergyAG, &layerReadLatencyWG, &layerReadDynamicEnergyWG, 
+				&layerWriteLatencyWU, &layerWriteDynamicEnergyWU, &layerbufferLatency, &layerbufferDynamicEnergy, &layericLatency, &layericDynamicEnergy,
+				&coreLatencyADC, &coreLatencyAccum, &coreLatencyOther, &coreEnergyADC, &coreEnergyAccum, &coreEnergyOther, &layerDRAMLatency, &layerDRAMDynamicEnergy,
+				&layerReadLatencyPeakFW, &layerReadDynamicEnergyPeakFW, &layerReadLatencyPeakAG, &layerReadDynamicEnergyPeakAG,
+				&layerReadLatencyPeakWG, &layerReadDynamicEnergyPeakWG, &layerWriteLatencyPeakWU, &layerWriteDynamicEnergyPeakWU);
+
+			chipReadLatency += layerReadLatency;
+			chipReadDynamicEnergy += layerReadDynamicEnergy;
+
+			//自回归阶段
+			for(int i =seq_len+1;i<=param->output_len;i++){
+				seq_len = 1;
+				seq_len_total++;
+				ChipCalculatePerformance(inputParameter, tech, cell, 0, "", "", "", 0,
+					netStructure, markNM, 1, seq_len, seq_len_total, numTileEachLayer, utilizationEachLayer, speedUpEachLayer, tileLocaEachLayer,
+					numPENM, desiredPESizeNM, desiredTileSizeCM, desiredPESizeCM, CMTileheight, CMTilewidth, NMTileheight, NMTilewidth, numArrayWriteParallel,
+					&layerReadLatency, &layerReadDynamicEnergy, &tileLeakage, &layerReadLatencyAG, &layerReadDynamicEnergyAG, &layerReadLatencyWG, &layerReadDynamicEnergyWG, 
+					&layerWriteLatencyWU, &layerWriteDynamicEnergyWU, &layerbufferLatency, &layerbufferDynamicEnergy, &layericLatency, &layericDynamicEnergy,
+					&coreLatencyADC, &coreLatencyAccum, &coreLatencyOther, &coreEnergyADC, &coreEnergyAccum, &coreEnergyOther, &layerDRAMLatency, &layerDRAMDynamicEnergy,
+					&layerReadLatencyPeakFW, &layerReadDynamicEnergyPeakFW, &layerReadLatencyPeakAG, &layerReadDynamicEnergyPeakAG,
+					&layerReadLatencyPeakWG, &layerReadDynamicEnergyPeakWG, &layerWriteLatencyPeakWU, &layerWriteDynamicEnergyPeakWU);
+	
+				chipReadLatency += layerReadLatency;
+				chipReadDynamicEnergy += layerReadDynamicEnergy;
+			}
+		}
+		else{
+			//只执行自回归生成阶段
+			//自回归阶段
+			int seq_len = param->input_len;
+			int seq_len_total = param->input_len;
+			for(int i =seq_len+1;i<=param->output_len;i++){
+				seq_len = 1;
+				seq_len_total++;
+				ChipCalculatePerformance(inputParameter, tech, cell, 0, "", "", "", 0,
+					netStructure, markNM, 1, seq_len, seq_len_total, numTileEachLayer, utilizationEachLayer, speedUpEachLayer, tileLocaEachLayer,
+					numPENM, desiredPESizeNM, desiredTileSizeCM, desiredPESizeCM, CMTileheight, CMTilewidth, NMTileheight, NMTilewidth, numArrayWriteParallel,
+					&layerReadLatency, &layerReadDynamicEnergy, &tileLeakage, &layerReadLatencyAG, &layerReadDynamicEnergyAG, &layerReadLatencyWG, &layerReadDynamicEnergyWG, 
+					&layerWriteLatencyWU, &layerWriteDynamicEnergyWU, &layerbufferLatency, &layerbufferDynamicEnergy, &layericLatency, &layericDynamicEnergy,
+					&coreLatencyADC, &coreLatencyAccum, &coreLatencyOther, &coreEnergyADC, &coreEnergyAccum, &coreEnergyOther, &layerDRAMLatency, &layerDRAMDynamicEnergy,
+					&layerReadLatencyPeakFW, &layerReadDynamicEnergyPeakFW, &layerReadLatencyPeakAG, &layerReadDynamicEnergyPeakAG,
+					&layerReadLatencyPeakWG, &layerReadDynamicEnergyPeakWG, &layerWriteLatencyPeakWU, &layerWriteDynamicEnergyPeakWU);
+	
+				chipReadLatency += layerReadLatency;
+				chipReadDynamicEnergy += layerReadDynamicEnergy;
+			}
+		}
+	}
+	else if (! param->pipeline) {
 		// layer-by-layer process
 		// show the detailed hardware performance for each layer
 		for (int i=0; i<netStructure.size(); i++) {
@@ -361,7 +419,7 @@ int main(int argc, char * argv[]) {
                         param->activityColWriteWG = atof(argv[4*i+8]);
 			
 			ChipCalculatePerformance(inputParameter, tech, cell, i, argv[4*i+5], argv[4*i+6], argv[4*i+7], netStructure[i][6],
-						netStructure, markNM, numTileEachLayer, utilizationEachLayer, speedUpEachLayer, tileLocaEachLayer,
+						netStructure, markNM, 0, 0, 0, numTileEachLayer, utilizationEachLayer, speedUpEachLayer, tileLocaEachLayer,
 						numPENM, desiredPESizeNM, desiredTileSizeCM, desiredPESizeCM, CMTileheight, CMTilewidth, NMTileheight, NMTilewidth, numArrayWriteParallel,
 						&layerReadLatency, &layerReadDynamicEnergy, &tileLeakage, &layerReadLatencyAG, &layerReadDynamicEnergyAG, &layerReadLatencyWG, &layerReadDynamicEnergyWG, 
 						&layerWriteLatencyWU, &layerWriteDynamicEnergyWU, &layerbufferLatency, &layerbufferDynamicEnergy, &layericLatency, &layericDynamicEnergy,
@@ -518,7 +576,7 @@ int main(int argc, char * argv[]) {
             param->activityRowWriteWG = atof(argv[4*i+8]);
             param->activityColWriteWG = atof(argv[4*i+8]);
 			ChipCalculatePerformance(inputParameter, tech, cell, i, argv[4*i+5], argv[4*i+6], argv[4*i+7], netStructure[i][6],
-						netStructure, markNM, numTileEachLayer, utilizationEachLayer, speedUpEachLayer, tileLocaEachLayer,
+						netStructure, markNM, 0, 0, 0, numTileEachLayer, utilizationEachLayer, speedUpEachLayer, tileLocaEachLayer,
 						numPENM, desiredPESizeNM, desiredTileSizeCM, desiredPESizeCM, CMTileheight, CMTilewidth, NMTileheight, NMTilewidth, numArrayWriteParallel,
 						&layerReadLatency, &layerReadDynamicEnergy, &tileLeakage, &layerReadLatencyAG, &layerReadDynamicEnergyAG, &layerReadLatencyWG, &layerReadDynamicEnergyWG, &layerWriteLatencyWU, &layerWriteDynamicEnergyWU,
 						&layerbufferLatency, &layerbufferDynamicEnergy, &layericLatency, &layericDynamicEnergy,
