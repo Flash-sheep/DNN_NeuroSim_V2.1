@@ -123,6 +123,7 @@ void TileInitialize(InputParameter& inputParameter, Technology& tech, MemCell& c
 		//数字计算初始化方式不太一样 默认通过CM来传递subArray的数量，对于transformer架构下，每个pe存储一个decoder 中的layer，因此需要确保能够存储完全，同时需要保证满足足够的KV存储空间
 		//在pe层面不进行优化处理，只获取peSize参数，peSize参数由高层算法决定，其定义为每个pe其用于存储权重的大小。
 		ProcessingUnitInitialize(subArrayInPE, inputParameter, tech, cell, ceil(sqrt(numSubArrayNM)), ceil(sqrt(numSubArrayNM)), ceil(sqrt(numSubArrayCM)), ceil(sqrt(numSubArrayCM)), digital);
+		cout << "----------------- End PE Initializing ------------------" <<  endl;
 	}
 	
 	if (param->novelMapping) {

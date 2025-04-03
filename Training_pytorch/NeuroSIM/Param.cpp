@@ -110,7 +110,7 @@ Param::Param() {
 	reLu = true;                // false: sigmoid
 								// true: reLu
 								
-	novelMapping = true;        // false: conventional mapping
+	novelMapping = false;        // false: conventional mapping
 								// true: novel mapping
 	
 	SARADC = false;              // false: MLSA
@@ -188,7 +188,7 @@ Param::Param() {
 	maxNumLevelLTP = 60;	            // Maximum number of conductance states during LTP or weight increase
 	maxNumLevelLTD = 60;	            // Maximum number of conductance states during LTD or weight decrease
 	writeVoltage = 4;
-	writePulseWidth = 50e-9;
+	writePulseWidth = 1e-9;             
 	nonlinearIV = false; 				// This option is to consider I-V nonlinearity in cross-point array or not
 	nonlinearity = 10; 					// This is the nonlinearity for the current ratio at Vw and Vw/2
 	
@@ -202,7 +202,7 @@ Param::Param() {
 	/****** in training: we initialize bi-direction subArray to calculate forward and gradient calculation of activation ******/
 	/****** the gradient calculation of weight is processed in seperate hardware (SRAM array: since need frequent write and erase) ******/
 	
-	trainingEstimation = true; 		// false: only run estimation for inference chip
+	trainingEstimation = false; 		// false: only run estimation for inference chip
 										// true: run estimation for both inference and training on-chip
 	
 	parallelBP = true;          		// false: conventionalSequential (Use several multi-bit RRAM as one synapse)

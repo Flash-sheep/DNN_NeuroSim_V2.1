@@ -135,10 +135,10 @@ int main(int argc, char * argv[]) {
 	vector<int> markNM;
 	vector<int> pipelineSpeedUp;
 
-	if(!param->digital){
-		markNM = ChipDesignInitialize(inputParameter, tech, cell, false, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
-		pipelineSpeedUp = ChipDesignInitialize(inputParameter, tech, cell, true, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
-	}
+	//该函数数字计算也需要调用，因为里面有部分电路原件的初始化
+	markNM = ChipDesignInitialize(inputParameter, tech, cell, false, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
+	pipelineSpeedUp = ChipDesignInitialize(inputParameter, tech, cell, true, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
+	
 	
 	
 	double desiredNumTileNM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM;
@@ -225,18 +225,24 @@ int main(int argc, char * argv[]) {
 	cout << endl;
 	
 	double numComputation = 0;
+
 	for (int i=0; i<netStructure.size(); i++) {
 		numComputation += 2*(netStructure[i][0] * netStructure[i][1] * netStructure[i][2] * netStructure[i][3] * netStructure[i][4] * netStructure[i][5]);
 	}
+	
+	
 	
 	if (param->trainingEstimation) {
 		numComputation *= 3;  // forward, computation of activation gradient, weight gradient
 		numComputation -= 2*(netStructure[0][0] * netStructure[0][1] * netStructure[0][2] * netStructure[0][3] * netStructure[0][4] * netStructure[0][5]);  //L-1 does not need AG
 		numComputation *= param->batchSize * param->numIteration;  // count for one epoch
 	}
-		
+
+	cout << "----------------- Start Initializing ------------------" <<  endl;
 	ChipInitialize(inputParameter, tech, cell, netStructure, markNM, numTileEachLayer,
 					numPENM, desiredNumTileNM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM, numTileRow, numTileCol, &numArrayWriteParallel);
+
+	cout << "----------------- End Initializing ------------------" <<  endl;
 	
 	double chipHeight, chipWidth, chipArea, chipAreaIC, chipAreaADC, chipAreaAccum, chipAreaOther, chipAreaWG, chipAreaArray;
 	double CMTileheight = 0;
@@ -244,7 +250,8 @@ int main(int argc, char * argv[]) {
 	double NMTileheight = 0;
 	double NMTilewidth = 0;
 	vector<double> chipAreaResults;
-				
+	
+	cout << "----------------- Start Area Calculating ------------------" <<  endl;
 	chipAreaResults = ChipCalculateArea(inputParameter, tech, cell, desiredNumTileNM, numPENM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM, numTileRow, 
 		&chipHeight, &chipWidth, &CMTileheight, &CMTilewidth, &NMTileheight, &NMTilewidth);	
 	chipArea = chipAreaResults[0];
@@ -369,6 +376,14 @@ int main(int argc, char * argv[]) {
 			chipReadLatency += layerReadLatency;
 			chipReadDynamicEnergy += layerReadDynamicEnergy;
 
+			numComputation += seq_len*param->d_k*param->n_heads*param->d_model*2; //WQ
+			numComputation += seq_len*param->d_k*param->n_heads*param->d_model*2; //WK
+			numComputation += seq_len*param->d_v*param->n_heads*param->d_model*2; //WV
+			numComputation += seq_len*seq_len_total*param->d_k*param->n_heads*2;    //K cache
+			numComputation += seq_len*seq_len_total*param->d_v*param->n_heads*2;    //V cache
+			numComputation += seq_len*param->d_model*param->d_v*param->n_heads*2;   //Linear
+			numComputation += seq_len*param->d_hidden*param->d_model*2; 			//FFN1
+			numComputation += seq_len*param->d_model*param->d_hidden*2; 			//FFN2
 			//自回归阶段
 			for(int i =seq_len+1;i<=param->output_len;i++){
 				seq_len = 1;
@@ -384,6 +399,14 @@ int main(int argc, char * argv[]) {
 	
 				chipReadLatency += layerReadLatency;
 				chipReadDynamicEnergy += layerReadDynamicEnergy;
+				numComputation += seq_len*param->d_k*param->n_heads*param->d_model*2; //WQ
+				numComputation += seq_len*param->d_k*param->n_heads*param->d_model*2; //WK
+				numComputation += seq_len*param->d_v*param->n_heads*param->d_model*2; //WV
+				numComputation += seq_len*seq_len_total*param->d_k*param->n_heads*2;    //K cache
+				numComputation += seq_len*seq_len_total*param->d_v*param->n_heads*2;    //V cache
+				numComputation += seq_len*param->d_model*param->d_v*param->n_heads*2;   //Linear
+				numComputation += seq_len*param->d_hidden*param->d_model*2; 			//FFN1
+				numComputation += seq_len*param->d_model*param->d_hidden*2; 			//FFN2
 			}
 		}
 		else{
@@ -405,6 +428,14 @@ int main(int argc, char * argv[]) {
 	
 				chipReadLatency += layerReadLatency;
 				chipReadDynamicEnergy += layerReadDynamicEnergy;
+				numComputation += seq_len*param->d_k*param->n_heads*param->d_model*2; //WQ
+				numComputation += seq_len*param->d_k*param->n_heads*param->d_model*2; //WK
+				numComputation += seq_len*param->d_v*param->n_heads*param->d_model*2; //WV
+				numComputation += seq_len*seq_len_total*param->d_k*param->n_heads*2;    //K cache
+				numComputation += seq_len*seq_len_total*param->d_v*param->n_heads*2;    //V cache
+				numComputation += seq_len*param->d_model*param->d_v*param->n_heads*2;   //Linear
+				numComputation += seq_len*param->d_hidden*param->d_model*2; 			//FFN1
+				numComputation += seq_len*param->d_model*param->d_hidden*2; 			//FFN2
 			}
 		}
 	}

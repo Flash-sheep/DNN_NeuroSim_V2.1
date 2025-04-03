@@ -63,5 +63,6 @@ vector<double> GetColumnResistance(const vector<double> &input, const vector<vec
 vector<double> GetRowResistance(const vector<double> &input, const vector<vector<double> > &weight, MemCell& cell, bool parallelRead, double resCellAccess);
 void GetWriteUpdateEstimation(SubArray *subArray, Technology& tech, MemCell& cell, const vector<vector<double> > &newMemory, const vector<vector<double> > &oldMemory, double *activityColWrite, double *activityRowWrite,
 								int *numWritePulseAVG, int *totalNumWritePulse, double *writeDynamicEnergyArray);
+void GetArrayEstimation(SubArray *subArray, Technology &tech, MemCell &cell, const int weightMatrixRow, const int weightMatrixCol,int *mulNor, int *addNor, double *writeDynamicEnergyArray);  //需要根据矩阵的大小以及对应的subarray计算所需的mulNor次数、addNor次数以及阵列写能耗
 
 #endif /* PROCESSINGUNIT_H_ */

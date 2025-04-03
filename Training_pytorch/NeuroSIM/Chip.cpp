@@ -367,8 +367,10 @@ void ChipInitialize(InputParameter& inputParameter, Technology& tech, MemCell& c
 					double numPENM, double desiredNumTileNM, double desiredPESizeNM, double desiredNumTileCM, double desiredTileSizeCM, double desiredPESizeCM, int numTileRow, int numTileCol, int *numArrayWriteParallel) { 
 
 	/*** Initialize Tile ***/
+
 	TileInitialize(inputParameter, tech, cell, numPENM, desiredPESizeNM, ceil((double)(desiredTileSizeCM)/(double)(desiredPESizeCM)), desiredPESizeCM, param->digital);
-	
+	cout << "----------------- End Tile Initializing ------------------" <<  endl;
+
 	// find max layer and define the global buffer: enough to hold the max layer inputs
 	// global buffer的大小需要调整，应该调整为能够hold最大的input len输入
 	// 需要考虑到最大的input len输入大小为多少？
@@ -380,7 +382,7 @@ void ChipInitialize(InputParameter& inputParameter, Technology& tech, MemCell& c
 	if(param->digital){
 		globalBusWidth = (desiredTileSizeCM)+(desiredTileSizeCM)/param->numColMuxed; //直接给定buswidth 由于没有流水线化
 		maxLayerInput = param->input_len*param->d_model; //最大的输入大小，没有精确到bit
-		maxTileAdded = 0; //无需使用accumulation组件
+		maxTileAdded = 1; //无需使用accumulation组件
 
 	}
 	else{
@@ -421,8 +423,13 @@ void ChipInitialize(InputParameter& inputParameter, Technology& tech, MemCell& c
 	// consider limited buffer to store gradient of weight: only part of the weight matrix is processed at a specific cycle
 	// we could set a bufferOverheadConstraint to limit the overhead and speed of computation and weight-update
 	// start: at least can support gradient of one weight matrix = subArray size * weightPrecision/cellPrecision
+	// cout<<weightGradientUnit->outPrecision<<endl; 这一块代码写的很屎，outPrecision此时还没有赋值应该为0
 	int bufferOverHead = param->numRowSubArray*param->numColSubArray*param->numColPerSynapse*(weightGradientUnit->outPrecision+ceil(log2(param->batchSize)));
+	// cout << "----------------- Split ------------------" <<  endl;
+
+	// cout<<bufferOverHead<<endl;
 	*numArrayWriteParallel = floor(bufferOverHead/((param->numRowSubArray*param->numColSubArray)*param->synapseBit));
+	// cout << "----------------- Split ------------------" <<  endl;
 	
 	dRAM->Initialize(param->dramType);
 	if (param->trainingEstimation) {
@@ -448,14 +455,16 @@ void ChipInitialize(InputParameter& inputParameter, Technology& tech, MemCell& c
 		gradientAccum->Initialize(weightGradientUnit->outPrecision+ceil(log2(param->batchSize)), (*numArrayWriteParallel)*param->numRowSubArray*param->numColSubArray);
 	} 
 	
-	//globalBuffer->Initialize(param->numBitInput*maxLayerInput, globalBusWidth, 1, param->unitLengthWireResistance, param->clkFreq, param->globalBufferType);
+	// globalBuffer->Initialize(param->numBitInput*maxLayerInput, globalBusWidth, 1, param->unitLengthWireResistance, param->clkFreq, param->globalBufferType);
 	numBufferCore = ceil(bufferSize/(param->globalBufferCoreSizeRow*param->globalBufferCoreSizeCol));
-	//numBufferCore = ceil(1.5*numBufferCore);
+	// numBufferCore = ceil(1.5*numBufferCore);
 	globalBuffer->Initialize((param->globalBufferCoreSizeRow*param->globalBufferCoreSizeCol), param->globalBufferCoreSizeCol, 1, param->unitLengthWireResistance, param->clkFreq, param->globalBufferType);
 	
 	maxPool->Initialize(param->numBitInput, 2*2, (desiredTileSizeCM));
 	GhTree->Initialize((numTileRow), (numTileCol), param->globalBusDelayTolerance, globalBusWidth);
 	
+	
+
 	//activation inside Tile or outside?
 	if (param->chipActivation) {
 		int maxThroughputTile, maxAddFromSubArray;
