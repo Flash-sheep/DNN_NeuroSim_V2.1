@@ -104,7 +104,7 @@ Param::Param() {
 	peBufferType = false;        // false: register file
 								// true: SRAM
 	
-	chipActivation = true;      // false: activation (reLu/sigmoid) inside Tile
+	chipActivation = false;      // false: activation (reLu/sigmoid) inside Tile
 								// true: activation outside Tile
 								
 	reLu = true;                // false: sigmoid

@@ -245,6 +245,7 @@ void TileInitialize(InputParameter& inputParameter, Technology& tech, MemCell& c
 	}
 	numInBufferCore = ceil((numPECM*param->numBitInput*param->numRowSubArray)/(param->tileBufferCoreSizeRow*param->tileBufferCoreSizeCol));
 	
+
 	if ((numPECM*param->numBitInput*param->numRowSubArray) < (param->tileBufferCoreSizeRow*param->tileBufferCoreSizeCol)) {
 		inputBufferCM->Initialize(numPECM*param->numBitInput*param->numRowSubArray, numPECM*param->numRowSubArray, 1, param->unitLengthWireResistance, param->clkFreq, param->peBufferType);
 	} else {
@@ -536,7 +537,73 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 		*readDynamicEnergy += PEreadDynamicEnergy;
 		//其他的延迟和能耗暂时不考虑
 
-
+		//buffer等延迟
+		double numBitToLoadOut, numBitToLoadIn;								 
+		// if (!param->chipActivation) {
+		// 	if (param->reLu) {
+		// 		reLuCM->CalculateLatency((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse)/reLuCM->numUnit);
+		// 		reLuCM->CalculatePower((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse)/reLuCM->numUnit);
+		// 		*readLatency += reLuCM->readLatency;
+		// 		*readDynamicEnergy += reLuCM->readDynamicEnergy;
+		// 		*readLatencyPeakFW += reLuCM->readLatency;
+		// 		*readDynamicEnergyPeakFW += reLuCM->readDynamicEnergy;
+				
+		// 		*coreLatencyOther += reLuCM->readLatency;
+		// 		*coreEnergyOther += reLuCM->readDynamicEnergy;
+		// 		numBitToLoadIn = MAX(ceil(weightMatrixCol/param->numColPerSynapse)*(1+reLuCM->numBit)*numInVector/param->numBitInput, 0);
+		// 		outputBufferCM->CalculateLatency(outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width, outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width);
+		// 		outputBufferCM->CalculatePower(outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width, outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width);
+		// 	} else {
+		// 		sigmoidCM->CalculateLatency((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse)/sigmoidCM->numEntry);
+		// 		sigmoidCM->CalculatePower((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse)/sigmoidCM->numEntry);
+		// 		*readLatency += sigmoidCM->readLatency;
+		// 		*readDynamicEnergy += sigmoidCM->readDynamicEnergy;
+		// 		*readLatencyPeakFW += sigmoidCM->readLatency;
+		// 		*readDynamicEnergyPeakFW += sigmoidCM->readDynamicEnergy;
+				
+		// 		*coreLatencyOther += sigmoidCM->readLatency;
+		// 		*coreEnergyOther += sigmoidCM->readDynamicEnergy;
+		// 		numBitToLoadIn = MAX(ceil(weightMatrixCol/param->numColPerSynapse)*(1+sigmoidCM->numYbit)*numInVector/param->numBitInput, 0);
+		// 		outputBufferCM->CalculateLatency(outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width, outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width);
+		// 		outputBufferCM->CalculatePower(outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width, outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width);
+		// 	}
+		// } else {
+		// 	numBitToLoadIn = MAX(ceil(weightMatrixCol/param->numColPerSynapse)*(1+accumulationCM->numAdderBit)*numInVector/param->numBitInput, 0);
+		// 	outputBufferCM->CalculateLatency(outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width, outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width);
+		// 	outputBufferCM->CalculatePower(outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width, outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width);
+		// }
+		numBitToLoadIn = seq_len*param->d_model*param->synapseBit;
+		outputBufferCM->CalculateLatency(outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width, outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width);
+		outputBufferCM->CalculatePower(outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width, outputBufferCM->interface_width, numBitToLoadIn/outputBufferCM->interface_width);
+		//considering buffer activation: no matter speedup or not, the total number of data transferred is fixed
+		numBitToLoadOut = seq_len*param->d_model*param->synapseBit; //输入输出缓冲区需要接收整个token序列
+		inputBufferCM->CalculateLatency(inputBufferCM->interface_width, numBitToLoadOut/inputBufferCM->interface_width, inputBufferCM->interface_width, numBitToLoadOut/inputBufferCM->interface_width);
+		inputBufferCM->CalculatePower(inputBufferCM->interface_width, numBitToLoadOut/inputBufferCM->interface_width, inputBufferCM->interface_width, numBitToLoadOut/inputBufferCM->interface_width);
+		// since multi-core buffer has improve the parallelism
+		inputBufferCM->readLatency /= MIN(numInBufferCore, ceil(hTreeCM->busWidth/inputBufferCM->interface_width));
+		inputBufferCM->writeLatency /= MIN(numInBufferCore, ceil(hTreeCM->busWidth/inputBufferCM->interface_width));
+		outputBufferCM->readLatency /= MIN(numOutBufferCore, ceil(hTreeCM->busWidth/outputBufferCM->interface_width));
+		outputBufferCM->writeLatency /= MIN(numOutBufferCore, ceil(hTreeCM->busWidth/outputBufferCM->interface_width));
+		
+		// used to define travel distance
+		double PEheight, PEwidth, PEbufferArea;
+		int numSubArray = ceil((double) peSize/(double) param->numRowSubArray)*ceil((double) peSize/(double) param->numColSubArray);
+		vector<double> PEarea;
+		PEarea = ProcessingUnitCalculateArea(subArrayInPE, ceil((double)sqrt((double)numSubArray)), ceil((double)sqrt((double)numSubArray)), false, &PEheight, &PEwidth, &PEbufferArea);
+		hTreeCM->CalculateLatency(NULL, NULL, NULL, NULL, PEheight, PEwidth, (numBitToLoadOut+numBitToLoadIn)/hTreeCM->busWidth);
+		hTreeCM->CalculatePower(NULL, NULL, NULL, NULL, PEheight, PEwidth, hTreeCM->busWidth, (numBitToLoadOut+numBitToLoadIn)/hTreeCM->busWidth);
+		
+		*readLatency += (inputBufferCM->readLatency + inputBufferCM->writeLatency);
+		*readDynamicEnergy += inputBufferCM->readDynamicEnergy + inputBufferCM->writeDynamicEnergy;
+		*readLatency += (outputBufferCM->readLatency + outputBufferCM->writeLatency);
+		*readDynamicEnergy += outputBufferCM->readDynamicEnergy + outputBufferCM->writeDynamicEnergy;
+		*readLatency += hTreeCM->readLatency;
+		*readDynamicEnergy += hTreeCM->readDynamicEnergy;
+		
+		*bufferLatency += (inputBufferCM->readLatency + outputBufferCM->readLatency + inputBufferCM->writeLatency + outputBufferCM->writeLatency);
+		*icLatency += hTreeCM->readLatency;
+		*bufferDynamicEnergy += inputBufferCM->readDynamicEnergy + outputBufferCM->readDynamicEnergy + inputBufferCM->writeDynamicEnergy + outputBufferCM->writeDynamicEnergy;
+		*icDynamicEnergy += hTreeCM->readDynamicEnergy;
 
 
 	}

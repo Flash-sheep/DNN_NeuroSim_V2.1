@@ -367,39 +367,50 @@ void ChipInitialize(InputParameter& inputParameter, Technology& tech, MemCell& c
 					double numPENM, double desiredNumTileNM, double desiredPESizeNM, double desiredNumTileCM, double desiredTileSizeCM, double desiredPESizeCM, int numTileRow, int numTileCol, int *numArrayWriteParallel) { 
 
 	/*** Initialize Tile ***/
-	TileInitialize(inputParameter, tech, cell, numPENM, desiredPESizeNM, ceil((double)(desiredTileSizeCM)/(double)(desiredPESizeCM)), desiredPESizeCM);
+	TileInitialize(inputParameter, tech, cell, numPENM, desiredPESizeNM, ceil((double)(desiredTileSizeCM)/(double)(desiredPESizeCM)), desiredPESizeCM, param->digital);
 	
 	// find max layer and define the global buffer: enough to hold the max layer inputs
+	// global buffer的大小需要调整，应该调整为能够hold最大的input len输入
+	// 需要考虑到最大的input len输入大小为多少？
 	double maxLayerInput = 0; 
 	// find max # tiles needed to be added at the same time
 	double maxTileAdded = 0;
 	int maxIFMLayer = 0;
 	
-	for (int i=0; i<netStructure.size(); i++) {
-		double input = netStructure[i][0]*netStructure[i][1]*netStructure[i][2];  // IFM_Row * IFM_Column * IFM_depth
-		if (! param->pipeline) {
-			if (input > maxLayerInput) {
-				maxLayerInput = input;
-				maxIFMLayer = i;
-			}
-			if (markNM[i] == 0) {
-				globalBusWidth += (desiredTileSizeCM)+(desiredTileSizeCM)/param->numColMuxed;
-			} else {
-				globalBusWidth += (desiredPESizeNM)*ceil((double)sqrt(numPENM))+(desiredPESizeNM)*ceil((double)sqrt(numPENM))/param->numColMuxed;
-			}
-		} else {
-			maxLayerInput += netStructure[i][0]*netStructure[i][1]*netStructure[i][2]/2;
-			if (markNM[i] == 0) {
-				globalBusWidth += ((desiredTileSizeCM)+(desiredTileSizeCM)/param->numColMuxed)*numTileEachLayer[0][i]*numTileEachLayer[1][i];
-			} else {
-				globalBusWidth += ((desiredPESizeNM)*ceil((double)sqrt(numPENM))+(desiredPESizeNM)*ceil((double)sqrt(numPENM))/param->numColMuxed)*numTileEachLayer[0][i]*numTileEachLayer[1][i];
-			}
-		}
+	if(param->digital){
+		globalBusWidth = (desiredTileSizeCM)+(desiredTileSizeCM)/param->numColMuxed; //直接给定buswidth 由于没有流水线化
+		maxLayerInput = param->input_len*param->d_model; //最大的输入大小，没有精确到bit
+		maxTileAdded = 0; //无需使用accumulation组件
 
-		if (numTileEachLayer[0][i] > maxTileAdded) {
-			maxTileAdded = numTileEachLayer[0][i];
+	}
+	else{
+		for (int i=0; i<netStructure.size(); i++) {
+			double input = netStructure[i][0]*netStructure[i][1]*netStructure[i][2];  // IFM_Row * IFM_Column * IFM_depth
+			if (! param->pipeline) {
+				if (input > maxLayerInput) {
+					maxLayerInput = input;
+					maxIFMLayer = i;
+				}
+				if (markNM[i] == 0) {
+					globalBusWidth += (desiredTileSizeCM)+(desiredTileSizeCM)/param->numColMuxed;
+				} else {
+					globalBusWidth += (desiredPESizeNM)*ceil((double)sqrt(numPENM))+(desiredPESizeNM)*ceil((double)sqrt(numPENM))/param->numColMuxed;
+				}
+			} else {
+				maxLayerInput += netStructure[i][0]*netStructure[i][1]*netStructure[i][2]/2;
+				if (markNM[i] == 0) {
+					globalBusWidth += ((desiredTileSizeCM)+(desiredTileSizeCM)/param->numColMuxed)*numTileEachLayer[0][i]*numTileEachLayer[1][i];
+				} else {
+					globalBusWidth += ((desiredPESizeNM)*ceil((double)sqrt(numPENM))+(desiredPESizeNM)*ceil((double)sqrt(numPENM))/param->numColMuxed)*numTileEachLayer[0][i]*numTileEachLayer[1][i];
+				}
+			}
+
+			if (numTileEachLayer[0][i] > maxTileAdded) {
+				maxTileAdded = numTileEachLayer[0][i];
+			}
 		}
 	}
+	
 	// have to limit the global bus width --> cannot grow dramatically with num of tile
 	while (globalBusWidth > param->maxGlobalBusWidth) {
 		globalBusWidth /= 2;
@@ -702,19 +713,30 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	double tileWriteLatencyPeakWU,tileWriteDynamicEnergyPeakWU,tilebufferLatency,tilebufferDynamicEnergy,tileicLatency,tileicDynamicEnergy;
 	double tileLatencyADC,tileLatencyAccum,tileLatencyOther,tileEnergyADC,tileEnergyAccum,tileEnergyOther;
 	
-	int numInVector = (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
-	int totalNumTile = 0;
-	for (int i=0; i<netStructure.size(); i++) {
-		totalNumTile += numTileEachLayer[0][i] * numTileEachLayer[1][i];
+
+	int numInVector;
+	int totalNumTile;
+
+	if(!digital){
+		numInVector = (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+		totalNumTile = 0;
+		for (int i=0; i<netStructure.size(); i++) {
+			totalNumTile += numTileEachLayer[0][i] * numTileEachLayer[1][i];
+		}
+	}
+	else{
+		numInVector = seq_len;
+		totalNumTile = param->numDecoderBlock;
 	}
 	
+	
 	if(digital){ //进行数字计算的transformer推理，完成指定序列输入和指定KV缓存大小下的输出一个token的过程仿真
-		int numPE = 3;
+		int numPE = ceil((double)desiredTileSizeCM/(double)desiredPESizeCM);
 		for(int i = 0; i< param->numDecoderBlock;i++){
 			vector<vector<double> > tileMemoryOld;
 			vector<vector<double> > tileMemory;
 			vector<vector<double> > tileInput;
-			TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, markNM[l], true, seq_len, seq_len_total, layerNumber, , desiredPESizeCM, 1, 1,
+			TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, markNM[l], true, seq_len, seq_len_total, layerNumber, numPE, desiredPESizeCM, 1, 1,
 									0, 0, 0, tech, cell, &tileReadLatency, &tileReadDynamicEnergy, &tileLeakage,
 									&tileReadLatencyAG, &tileReadDynamicEnergyAG, &tileWriteLatencyWU, &tileWriteDynamicEnergyWU,
 									&tilebufferLatency, &tilebufferDynamicEnergy, &tileicLatency, &tileicDynamicEnergy, 
@@ -727,6 +749,24 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 		}
 		//buffer开销
 		//bus开销
+		double numBitToLoadOut = param->d_model*param->numBitInput*numInVector; //每个decoder的输出应该大小与输入相同
+		double numBitToLoadIn = param->d_model*param->numBitInput*numInVector; //输入序列的大小;
+		
+		GhTree->CalculateLatency(0, 0, ceil(sqrt(totalNumTile)), ceil(sqrt(totalNumTile)), CMTileheight, CMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/GhTree->busWidth));
+		GhTree->CalculatePower(0, 0, ceil(sqrt(totalNumTile)), ceil(sqrt(totalNumTile)), CMTileheight, CMTilewidth, GhTree->busWidth, 
+							ceil((numBitToLoadOut+numBitToLoadIn)/GhTree->busWidth));
+					
+		globalBuffer->CalculateLatency(globalBuffer->interface_width, numBitToLoadOut/globalBuffer->interface_width,
+								globalBuffer->interface_width, numBitToLoadIn/globalBuffer->interface_width);
+		globalBuffer->CalculatePower(globalBuffer->interface_width, numBitToLoadOut/globalBuffer->interface_width,
+								globalBuffer->interface_width, numBitToLoadIn/globalBuffer->interface_width);
+		// since multi-core buffer has improve the parallelism
+		globalBuffer->readLatency /= MIN(numBufferCore, ceil(globalBusWidth/globalBuffer->interface_width));
+		globalBuffer->writeLatency /= MIN(numBufferCore, ceil(globalBusWidth/globalBuffer->interface_width));
+		// // each time, only a part of the ic is used to transfer data to a part of the tiles
+		// globalBuffer->readLatency *= ceil(totalNumTile/(numTileEachLayer[0][l]*numTileEachLayer[1][l]));
+		// globalBuffer->writeLatency *= ceil(totalNumTile/(numTileEachLayer[0][l]*numTileEachLayer[1][l]));
+
 	}
 	else if (markNM[l] == 0) {   // conventional mapping
 		for (int i=0; i<ceil((double) netStructure[l][2]*(double) netStructure[l][3]*(double) netStructure[l][4]*(double) numRowPerSynapse/desiredTileSizeCM); i++) {       // # of tiles in row
@@ -743,7 +783,7 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 				vector<vector<double> > tileInput;
 				tileInput = CopyInput(inputVector, i*desiredTileSizeCM, numInVector*param->numBitInput, numRowMatrix);
 				
-				TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, markNM[l], layerNumber, ceil((double)desiredTileSizeCM/(double)desiredPESizeCM), desiredPESizeCM, speedUpEachLayer[0][l], speedUpEachLayer[1][l],
+				TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, markNM[l], false, 0, 0, layerNumber, ceil((double)desiredTileSizeCM/(double)desiredPESizeCM), desiredPESizeCM, speedUpEachLayer[0][l], speedUpEachLayer[1][l],
 									numRowMatrix, numColMatrix, numInVector*param->numBitInput, tech, cell, &tileReadLatency, &tileReadDynamicEnergy, &tileLeakage,
 									&tileReadLatencyAG, &tileReadDynamicEnergyAG, &tileWriteLatencyWU, &tileWriteDynamicEnergyWU,
 									&tilebufferLatency, &tilebufferDynamicEnergy, &tileicLatency, &tileicDynamicEnergy, 
@@ -875,7 +915,7 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 				tileInput = ReshapeInput(inputVector, i*desiredPESizeNM, (int) (netStructure[l][0]-netStructure[l][3]+1)*(netStructure[l][1]-netStructure[l][4]+1)*param->numBitInput, 
 									(int) netStructure[l][2]*numRowPerSynapse/numtileEachLayerRow, numPENM, (int) netStructure[l][2]*numRowPerSynapse);
 	
-				TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, markNM[l], layerNumber, numPENM, desiredPESizeNM, speedUpEachLayer[0][l], speedUpEachLayer[1][l],
+				TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, markNM[l], false, 0, 0, layerNumber, numPENM, desiredPESizeNM, speedUpEachLayer[0][l], speedUpEachLayer[1][l],
 									numRowMatrix, numColMatrix, numInVector*param->numBitInput, tech, cell, 
 									&tileReadLatency, &tileReadDynamicEnergy, &tileLeakage, &tileReadLatencyAG, &tileReadDynamicEnergyAG, &tileWriteLatencyWU, &tileWriteDynamicEnergyWU,
 									&tilebufferLatency, &tilebufferDynamicEnergy, &tileicLatency, &tileicDynamicEnergy,
@@ -1006,14 +1046,17 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	*readLatencyWG = (globalBuffer->readLatency + globalBuffer->writeLatency)*((param->trainingEstimation)==true? 2:0);
 	*readDynamicEnergyWG = (globalBuffer->readDynamicEnergy + globalBuffer->writeDynamicEnergy)*((param->trainingEstimation)==true? 2:0);
 	
-	int dataLoadIn = (netStructure[0][0])*(netStructure[0][1])*param->numBitInput; 
-	// ONLY LOAD IMAGE
-	dRAM->CalculateLatency(dataLoadIn);
-	dRAM->CalculatePower(dataLoadIn);
-	*readLatency += (dRAM->readLatency)*((param->trainingEstimation)==true? 0:1);
-	*readDynamicEnergy += (dRAM->readDynamicEnergy)*((param->trainingEstimation)==true? 0:1);
-	*dramLatency = (dRAM->readLatency*((param->trainingEstimation)==true? 0:1)); 
-	*dramDynamicEnergy = (dRAM->readDynamicEnergy*((param->trainingEstimation)==true? 0:1));
+	if(!digital){
+		int dataLoadIn = (netStructure[0][0])*(netStructure[0][1])*param->numBitInput; 
+		// ONLY LOAD IMAGE
+		dRAM->CalculateLatency(dataLoadIn);
+		dRAM->CalculatePower(dataLoadIn);
+		*readLatency += (dRAM->readLatency)*((param->trainingEstimation)==true? 0:1);
+		*readDynamicEnergy += (dRAM->readDynamicEnergy)*((param->trainingEstimation)==true? 0:1);
+		*dramLatency = (dRAM->readLatency*((param->trainingEstimation)==true? 0:1)); 
+		*dramDynamicEnergy = (dRAM->readDynamicEnergy*((param->trainingEstimation)==true? 0:1));
+	}
+	
 	
 	if (param->trainingEstimation) {
 		// Dring on-chip training, the activation and gradient of activation of each layer will be sent to DRAM

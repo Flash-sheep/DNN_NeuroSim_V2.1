@@ -171,6 +171,7 @@ int main(int argc, char * argv[]) {
 		//手动设置在数字计算模式下的参数
 		desiredPESizeCM = 11008*param->synapseBit; //暂时设置为最大的矩阵边
 		desiredTileSizeCM = 3*desiredPESizeCM;  //考虑使用9个pe
+		desiredNumTileCM = param->numDecoderBlock; //每个tile映射一个decoder
 		numTileRow = ceil(sqrt(param->numDecoderBlock));
 		numTileCol = numTileRow;
 
@@ -244,17 +245,16 @@ int main(int argc, char * argv[]) {
 	double NMTilewidth = 0;
 	vector<double> chipAreaResults;
 				
-	if(!param->digital){ //暂时不计算面积开销
-		chipAreaResults = ChipCalculateArea(inputParameter, tech, cell, desiredNumTileNM, numPENM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM, numTileRow, 
-			&chipHeight, &chipWidth, &CMTileheight, &CMTilewidth, &NMTileheight, &NMTilewidth);	
-		chipArea = chipAreaResults[0];
-		chipAreaIC = chipAreaResults[1];
-		chipAreaADC = chipAreaResults[2];
-		chipAreaAccum = chipAreaResults[3];
-		chipAreaOther = chipAreaResults[4];
-		chipAreaWG = chipAreaResults[5];
-		chipAreaArray = chipAreaResults[6];
-	}
+	chipAreaResults = ChipCalculateArea(inputParameter, tech, cell, desiredNumTileNM, numPENM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM, numTileRow, 
+		&chipHeight, &chipWidth, &CMTileheight, &CMTilewidth, &NMTileheight, &NMTilewidth);	
+	chipArea = chipAreaResults[0];
+	chipAreaIC = chipAreaResults[1];
+	chipAreaADC = chipAreaResults[2];
+	chipAreaAccum = chipAreaResults[3];
+	chipAreaOther = chipAreaResults[4];
+	chipAreaWG = chipAreaResults[5];
+	chipAreaArray = chipAreaResults[6];
+	
 	
 
 	
@@ -417,6 +417,7 @@ int main(int argc, char * argv[]) {
 			param->activityRowReadWG = atof(argv[4*i+8]);
                         param->activityRowWriteWG = atof(argv[4*i+8]);
                         param->activityColWriteWG = atof(argv[4*i+8]);
+						
 			
 			ChipCalculatePerformance(inputParameter, tech, cell, i, argv[4*i+5], argv[4*i+6], argv[4*i+7], netStructure[i][6],
 						netStructure, markNM, 0, 0, 0, numTileEachLayer, utilizationEachLayer, speedUpEachLayer, tileLocaEachLayer,
@@ -678,7 +679,7 @@ int main(int argc, char * argv[]) {
 			cout << "layer" << i+1 << "'s PEAK readDynamicEnergy of Weight Gradient is: " << readDynamicEnergyPerLayerPeakWG[i]*1e12 << "pJ" << endl;
 			cout << "layer" << i+1 << "'s PEAK writeLatency of Weight Update is: " << writeLatencyPerLayerPeakWU[i]*1e9 << "ns" << endl;
 			cout << "layer" << i+1 << "'s PEAK writeDynamicEnergy of Weight Update is: " << writeDynamicEnergyPerLayerPeakWU[i]*1e12 << "pJ" << endl;
-			cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+			cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 			cout << "layer" << i+1 << "'s leakagePower is: " << leakagePowerPerLayer[i]*1e6 << "uW" << endl;
 			cout << "layer" << i+1 << "'s leakageEnergy is: " << leakagePowerPerLayer[i] * (systemClock-readLatencyPerLayer[i]) *1e12 << "pJ" << endl;
 			cout << endl;

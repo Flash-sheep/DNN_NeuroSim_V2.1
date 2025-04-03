@@ -450,9 +450,9 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, 
 			*readDynamicEnergyAG += adderTreeNM->readDynamicEnergy*((param->trainingEstimation)&&(layerNumber!=0)==true? 1:0);
 			*coreEnergyAccum += adderTreeNM->readDynamicEnergy*((param->trainingEstimation)&&(layerNumber!=0)==true? 2:1);
 		} else {
-			//TODO 这里需要修改
-			adderTreeCM->CalculateLatency((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse), ceil((double) weightMatrixRow/(double) param->numRowSubArray), 0);
-			adderTreeCM->CalculatePower((int)(numInVector/param->numBitInput)*ceil(param->numColMuxed/param->numColPerSynapse), ceil((double) weightMatrixRow/(double) param->numRowSubArray));
+			//TODO 这里需要修改 对于列上进行划分的矩阵，需要通过adderTree进行一次相加操作
+			adderTreeCM->CalculateLatency(numInVector, ceil((double) weightMatrixCol/(double) param->numRowSubArray), 0);
+			adderTreeCM->CalculatePower(numInVector, ceil((double) weightMatrixCol/(double) param->numRowSubArray));
 			*readLatency += adderTreeCM->readLatency;
 			*readLatencyAG += adderTreeCM->readLatency*((param->trainingEstimation)&&(layerNumber!=0)==true? 1:0);
 			*coreLatencyAccum += adderTreeCM->readLatency*((param->trainingEstimation)&&(layerNumber!=0)==true? 2:1);
@@ -779,6 +779,10 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, 
 	//considering buffer activation: no matter speedup or not, the total number of data transferred is fixed
 	// input buffer: total num of data loaded in = weightMatrixRow*numInVector
 	// output buffer: total num of data transferred = weightMatrixRow*numInVector/param->numBitInput (total num of IFM in the PE) *adderTree->numAdderTree*adderTree->numAdderBit (bit precision of OFMs) 
+	if (DCpe){
+		numInVector = numInVector*param->numBitInput; //由于默认情况下Invector按bit表示，因此在这里进行扩展，使其与后续的bus以及buffer计算适配
+	}
+
 	if (NMpe) {
 		bufferInputNM->CalculateLatency(0, numInVector*ceil((double) weightMatrixRow/(double) param->numRowSubArray));
 		bufferOutputNM->CalculateLatency(0, numInVector/param->numBitInput);
