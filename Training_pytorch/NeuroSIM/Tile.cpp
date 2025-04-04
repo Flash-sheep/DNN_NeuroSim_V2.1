@@ -396,7 +396,7 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 
 		//需要区分此时处于的阶段，如果为第一次推理，需要调控每个pe的输入信号，让其写入矩阵。由于这里不考虑写入矩阵的延迟，因此不做处理
 
-		int seq_len = inputVector[0].size(); //TODO获取序列长度，由于这里不需要实际的Input输入，输入向量只用来表征token的个数，在每个pe传递一个fake input，用于适配其中模拟计算的代码。
+		int seq_len = seq_len; //TODO获取序列长度，由于这里不需要实际的Input输入，输入向量只用来表征token的个数，在每个pe传递一个fake input，用于适配其中模拟计算的代码。
 		
 		vector<vector<double> > pEMemoryOld; //无数据
 		vector<vector<double> > pEMemory; //由于无法获取处理过程中的实际权重矩阵，因此采用随机数生成的方式
@@ -410,6 +410,7 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
 		numInVector = seq_len; 
 		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		cout << "----------------- Start PE Performance ------------------" <<  endl;
 		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
 											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
 											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
@@ -417,6 +418,7 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
 											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
 											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
+		cout << "----------------- End PE Performance ------------------" <<  endl;
 		
 		*readLatency += PEreadLatency*2; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
 		*readDynamicEnergy += PEreadDynamicEnergy*2;

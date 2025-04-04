@@ -188,7 +188,7 @@ Param::Param() {
 	maxNumLevelLTP = 60;	            // Maximum number of conductance states during LTP or weight increase
 	maxNumLevelLTD = 60;	            // Maximum number of conductance states during LTD or weight decrease
 	writeVoltage = 4;
-	writePulseWidth = 1e-9;             
+	writePulseWidth = 1e-9; 			// 按照FloatPim的论文调整了写入延时            
 	nonlinearIV = false; 				// This option is to consider I-V nonlinearity in cross-point array or not
 	nonlinearity = 10; 					// This is the nonlinearity for the current ratio at Vw and Vw/2
 	

@@ -752,6 +752,8 @@ int main(int argc, char * argv[]) {
 		}
 	}
 	
+	cout << "----------------- End Performance ------------------" <<  endl;
+
 	if (breakdownfile.is_open()) {
 		breakdownfile << "Total" << "," << chipReadLatency << "," << chipReadLatencyAG << "," << chipReadLatencyWG << "," << chipWriteLatencyWU << ",";
 		breakdownfile << chipReadDynamicEnergy << "," << chipReadDynamicEnergyAG << "," << chipReadDynamicEnergyWG << "," << chipWriteDynamicEnergyWU << ",";

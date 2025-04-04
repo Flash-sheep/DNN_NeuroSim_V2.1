@@ -665,8 +665,13 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	// only get performance of single layer
 	int l = layerNumber;
 	// get weight matrix file Size
-	int weightMatrixRow = netStructure[l][2]*netStructure[l][3]*netStructure[l][4]*numRowPerSynapse;
-	int weightMatrixCol = netStructure[l][5]*numColPerSynapse;
+	int weightMatrixRow;
+	int weightMatrixCol;
+	if(!digital){
+		int weightMatrixRow = netStructure[l][2]*netStructure[l][3]*netStructure[l][4]*numRowPerSynapse;
+		int weightMatrixCol = netStructure[l][5]*numColPerSynapse;
+	}
+	
 	
 	// load in whole file 
 
@@ -741,21 +746,24 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	
 	if(digital){ //进行数字计算的transformer推理，完成指定序列输入和指定KV缓存大小下的输出一个token的过程仿真
 		int numPE = ceil((double)desiredTileSizeCM/(double)desiredPESizeCM);
+		cout << "----------------- Start Tile Performance ------------------" <<  endl;
+		vector<vector<double> > tileMemoryOld;
+		vector<vector<double> > tileMemory;
+		vector<vector<double> > tileInput;
+
+		TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, false, true, seq_len, seq_len_total, layerNumber, numPE, desiredPESizeCM, 1, 1,
+			0, 0, 0, tech, cell, &tileReadLatency, &tileReadDynamicEnergy, &tileLeakage,
+			&tileReadLatencyAG, &tileReadDynamicEnergyAG, &tileWriteLatencyWU, &tileWriteDynamicEnergyWU,
+			&tilebufferLatency, &tilebufferDynamicEnergy, &tileicLatency, &tileicDynamicEnergy, 
+			&tileLatencyADC, &tileLatencyAccum, &tileLatencyOther, &tileEnergyADC, &tileEnergyAccum, &tileEnergyOther, 
+			&tileReadLatencyPeakFW, &tileReadDynamicEnergyPeakFW, &tileReadLatencyPeakAG, &tileReadDynamicEnergyPeakAG,
+
+			&tileWriteLatencyPeakWU, &tileWriteDynamicEnergyPeakWU);
 		for(int i = 0; i< param->numDecoderBlock;i++){
-			vector<vector<double> > tileMemoryOld;
-			vector<vector<double> > tileMemory;
-			vector<vector<double> > tileInput;
-			TileCalculatePerformance(tileMemory, tileMemoryOld, tileInput, markNM[l], true, seq_len, seq_len_total, layerNumber, numPE, desiredPESizeCM, 1, 1,
-									0, 0, 0, tech, cell, &tileReadLatency, &tileReadDynamicEnergy, &tileLeakage,
-									&tileReadLatencyAG, &tileReadDynamicEnergyAG, &tileWriteLatencyWU, &tileWriteDynamicEnergyWU,
-									&tilebufferLatency, &tilebufferDynamicEnergy, &tileicLatency, &tileicDynamicEnergy, 
-									&tileLatencyADC, &tileLatencyAccum, &tileLatencyOther, &tileEnergyADC, &tileEnergyAccum, &tileEnergyOther, 
-									&tileReadLatencyPeakFW, &tileReadDynamicEnergyPeakFW, &tileReadLatencyPeakAG, &tileReadDynamicEnergyPeakAG,
-									&tileWriteLatencyPeakWU, &tileWriteDynamicEnergyPeakWU);
-			
 			*readLatency+=tileReadLatency;
 			*readDynamicEnergy+=tileReadDynamicEnergy;
 		}
+		cout << "----------------- End Tile Performance ------------------" <<  endl;
 		//buffer开销
 		//bus开销
 		double numBitToLoadOut = param->d_model*param->numBitInput*numInVector; //每个decoder的输出应该大小与输入相同

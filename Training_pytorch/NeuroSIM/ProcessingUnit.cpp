@@ -175,9 +175,14 @@ void ProcessingUnitInitialize(SubArray *& subArray, InputParameter& inputParamet
 	subArray->currentMode = param->currentMode;
 	subArray->spikingMode = NONSPIKING;
 	
+	
 	int numRow = param->numRowSubArray;
 	int numCol = param->numColSubArray;
-	
+	if(DCpe){
+		numRow = param->numRowSubArrayReal; //修改为实际的存储阵列大小
+		numCol = param->numColSubArrayReal;	
+	}
+
 	if (subArray->numColMuxed > numCol) {                      // Set the upperbound of numColMuxed
 		subArray->numColMuxed = numCol;
 	}
@@ -196,6 +201,7 @@ void ProcessingUnitInitialize(SubArray *& subArray, InputParameter& inputParamet
 	int numSubArrayColCM = _numSubArrayColCM;
 	
 	/*** initialize modules ***/
+	subArray->parallelWrite = DCpe; //在subArray内部使用parallelWrite来区分是否为数字计算
 	subArray->Initialize(numRow, numCol, param->unitLengthWireResistance);        // initialize subArray
 	subArray->CalculateArea();
 	
