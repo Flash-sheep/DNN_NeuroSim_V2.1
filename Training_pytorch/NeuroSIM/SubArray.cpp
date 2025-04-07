@@ -1114,7 +1114,7 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 		cout << "[Subarray] Error: Require initialization first!" << endl;
 		
 	} else {
-		
+		// cout<<"here\n";
 		readLatency = 0;
 		writeLatency = 0;
 
@@ -1490,7 +1490,7 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 				
 			}
 	    } else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
-
+			
 			if (parallelWrite){
 				double capBL = lengthCol * 0.2e-15/1e-6;
 				int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
@@ -1526,7 +1526,7 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 				
 				readLatencyADC = multilevelSenseAmp.readLatency + multilevelSAEncoder.readLatency + sarADC.readLatency;
 				readLatencyAccum = shiftAddInput.readLatency + shiftAddWeight.readLatency;
-				readLatencyOther = MAX(wlNewSwitchMatrix.readLatency + wlSwitchMatrix.readLatency, ( ((numColMuxed > 1)==true? (mux.readLatency+muxDecoder.readLatency):0) )) + colDelay;
+				readLatencyOther = MAX(wlNewSwitchMatrix.readLatency + wlSwitchMatrix.readLatency, ( ((numColMuxed > 1)==true? (mux.readLatency+muxDecoder.readLatency):0) )) + colDelay + slSwitchMatrix.readLatency;
 
 				// Write
 				writeLatency = 0;
@@ -1536,6 +1536,8 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 				writeLatency += writeLatencyArray;
 
 				readLatency += writeLatencyArray;
+				
+				// cout<<"Subarray readLatency is "<<readLatency<<" Subarray arrayLatency is "<<writeLatencyArray<<endl;
 				
 				// /* Transpose Peripheral for BP */
 				// if (trainingEstimation) {
@@ -2399,7 +2401,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, const vect
 
 				readDynamicEnergy += writeDynamicEnergyArray; //将矩阵的阵列写能耗计入 这一部分在processing Unit中计算
 				readDynamicEnergy += slSwitchMatrix.readDynamicEnergy;//将slSwitch矩阵的nor能耗计入
-				
+				cout<<"Subarray readDynamicEnergy is"<<readDynamicEnergy<<" Subarray arrayEnergy is "<<writeDynamicEnergyArray<<endl;
 				readDynamicEnergyADC = readDynamicEnergyArray + multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy + sarADC.readDynamicEnergy;
 				readDynamicEnergyAccum = shiftAddWeight.readDynamicEnergy + shiftAddInput.readDynamicEnergy;
 				readDynamicEnergyOther = wlNewSwitchMatrix.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy + ( ((numColMuxed > 1)==true? (mux.readDynamicEnergy + muxDecoder.readDynamicEnergy):0) );

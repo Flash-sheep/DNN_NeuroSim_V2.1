@@ -65,6 +65,9 @@ public:
 	double algoWeightMax, algoWeightMin;
 	double activityRowReadWG, activityRowWriteWG, activityColWriteWG;
 	double bufferOverHeadConstraint;
+
+	double v_on,v_off; //为忆阻器分别在on和off状态下所需要的写入电压
+	double v_nor; //进行nor运算时在bl上供给的电压
 	
 	int neuro, multifunctional, parallelWrite, parallelRead;
 	int numlut, numColMuxed, numWriteColMuxed, levelOutput, avgWeightBit, numBitInput, numRowMuxedAG, levelOutputAG, numRowMuxedWG, levelOutputWG;

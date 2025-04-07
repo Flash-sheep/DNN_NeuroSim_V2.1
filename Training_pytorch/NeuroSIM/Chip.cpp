@@ -759,10 +759,23 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 			&tileReadLatencyPeakFW, &tileReadDynamicEnergyPeakFW, &tileReadLatencyPeakAG, &tileReadDynamicEnergyPeakAG,
 
 			&tileWriteLatencyPeakWU, &tileWriteDynamicEnergyPeakWU);
-		for(int i = 0; i< param->numDecoderBlock;i++){
-			*readLatency+=tileReadLatency;
-			*readDynamicEnergy+=tileReadDynamicEnergy;
-		}
+		
+		*readLatency+=tileReadLatency*param->numDecoderBlock;
+		*readDynamicEnergy+=tileReadDynamicEnergy*param->numDecoderBlock;
+	
+		*bufferLatency = tilebufferLatency*param->numDecoderBlock;
+		*bufferDynamicEnergy += tilebufferDynamicEnergy*param->numDecoderBlock;
+		*icLatency = tileicLatency*param->numDecoderBlock;
+		*icDynamicEnergy += tileicDynamicEnergy*param->numDecoderBlock;
+		
+		*coreLatencyADC = tileLatencyADC*param->numDecoderBlock;
+		*coreLatencyAccum =tileLatencyAccum*param->numDecoderBlock;
+		*coreLatencyOther = tileLatencyOther*param->numDecoderBlock;
+		
+		*coreEnergyADC += tileEnergyADC*param->numDecoderBlock;
+		*coreEnergyAccum += tileEnergyAccum*param->numDecoderBlock;
+		*coreEnergyOther += tileEnergyOther*param->numDecoderBlock;
+		
 		cout << "----------------- End Tile Performance ------------------" <<  endl;
 		//buffer开销
 		//bus开销

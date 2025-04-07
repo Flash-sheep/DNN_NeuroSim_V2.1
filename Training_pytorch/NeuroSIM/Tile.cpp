@@ -396,7 +396,7 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 
 		//需要区分此时处于的阶段，如果为第一次推理，需要调控每个pe的输入信号，让其写入矩阵。由于这里不考虑写入矩阵的延迟，因此不做处理
 
-		int seq_len = seq_len; //TODO获取序列长度，由于这里不需要实际的Input输入，输入向量只用来表征token的个数，在每个pe传递一个fake input，用于适配其中模拟计算的代码。
+		// int seq_len = seq_len; //TODO获取序列长度，由于这里不需要实际的Input输入，输入向量只用来表征token的个数，在每个pe传递一个fake input，用于适配其中模拟计算的代码。
 		
 		vector<vector<double> > pEMemoryOld; //无数据
 		vector<vector<double> > pEMemory; //由于无法获取处理过程中的实际权重矩阵，因此采用随机数生成的方式
@@ -405,26 +405,26 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 
 		//Wq、Wk、Wv矩阵依次映射到不同的pe上 矩阵维度（d_model, d_k*n_heads），同时由于数字计算，因此矩阵需要转置，则映射矩阵维度为（d_k*n_heads,d_model）
 		//在行上需要多bit存储，因此最终矩阵维度为  
-		weightMatrixRow = param->d_k*param->n_heads;
-		weightMatrixCol = param->d_model*param->synapseBit;
-		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
-		numInVector = seq_len; 
-		pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
-		cout << "----------------- Start PE Performance ------------------" <<  endl;
-		ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
-											numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
-											&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
-											&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
-											&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
-											&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
-											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
-		cout << "----------------- End PE Performance ------------------" <<  endl;
+		// weightMatrixRow = param->d_k*param->n_heads;
+		// weightMatrixCol = param->d_model*param->synapseBit;
+		// pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
+		// numInVector = seq_len; 
+		// pEInput = generateOnesMatrix(weightMatrixRow,seq_len);
+		// cout << "----------------- Start PE Performance ------------------" <<  endl;
+		// ProcessingUnitCalculatePerformance(subArrayInPE, tech, cell, layerNumber, false, true, 0, pEMemory, pEMemoryOld, pEInput, 0, 0, 
+		// 									numSubArrayRow, numSubArrayCol, weightMatrixRow, weightMatrixCol, numInVector, &PEreadLatency, &PEreadDynamicEnergy, &PEleakage,
+		// 									&PEreadLatencyAG, &PEreadDynamicEnergyAG, &PEwriteLatencyWU, &PEwriteDynamicEnergyWU,
+		// 									&PEbufferLatency, &PEbufferDynamicEnergy, &PEicLatency, &PEicDynamicEnergy,
+		// 									&peLatencyADC, &peLatencyAccum, &peLatencyOther, &peEnergyADC, &peEnergyAccum, &peEnergyOther, 
+		// 									&peReadLatencyPeakFW, &peReadDynamicEnergyPeakFW, &peReadLatencyPeakAG, &peReadDynamicEnergyPeakAG,
+		// 									&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
 		
-		*readLatency += PEreadLatency*2; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
-		*readDynamicEnergy += PEreadDynamicEnergy*2;
+		
+		// *readLatency += PEreadLatency*2; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
+		// *readDynamicEnergy += PEreadDynamicEnergy*2;
 		//其他的延迟和能耗暂时不考虑
 
-		// Wv矩阵
+		// Wv矩阵  由于wv矩阵、wk矩阵、wq矩阵一般情况下大小相同，并且可以并行运算，所以直接简化计算
 		weightMatrixRow = param->d_v*param->n_heads;
 		weightMatrixCol = param->d_model*param->synapseBit;
 		pEMemory = generateRandomWeightMatrix(weightMatrixRow,weightMatrixCol);
@@ -439,7 +439,22 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 											&peWriteLatencyPeakWU, &peWriteDynamicEnergyPeakWU);
 		
 		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
-		*readDynamicEnergy += PEreadDynamicEnergy;
+		*readDynamicEnergy += PEreadDynamicEnergy*3;
+		*readLatencyAG += PEreadLatencyAG;
+		*readDynamicEnergyAG += PEreadDynamicEnergyAG*3;
+
+		*bufferLatency += PEbufferLatency;
+		*bufferDynamicEnergy += PEbufferDynamicEnergy*3;
+		*icLatency += PEicLatency;
+		*icDynamicEnergy += PEicDynamicEnergy*3;
+
+		*coreLatencyADC += peLatencyADC;
+		*coreLatencyAccum += peLatencyAccum;
+		*coreLatencyOther += peLatencyOther;
+
+		*coreEnergyADC += peEnergyADC*3;
+		*coreEnergyAccum += peEnergyAccum*3;
+		*coreEnergyOther += peEnergyOther*3;
 		//其他的延迟和能耗暂时不考虑
 
 
@@ -459,6 +474,21 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 		
 		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
 		*readDynamicEnergy += PEreadDynamicEnergy;
+		*readLatencyAG += PEreadLatencyAG;
+		*readDynamicEnergyAG += PEreadDynamicEnergyAG;
+
+		*bufferLatency += PEbufferLatency;
+		*bufferDynamicEnergy += PEbufferDynamicEnergy;
+		*icLatency += PEicLatency;
+		*icDynamicEnergy += PEicDynamicEnergy;
+
+		*coreLatencyADC += peLatencyADC;
+		*coreLatencyAccum += peLatencyAccum;
+		*coreLatencyOther += peLatencyOther;
+
+		*coreEnergyADC += peEnergyADC;
+		*coreEnergyAccum += peEnergyAccum;
+		*coreEnergyOther += peEnergyOther;
 		//其他的延迟和能耗暂时不考虑
 
 		//SoftMax矩阵
@@ -481,6 +511,21 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 		
 		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
 		*readDynamicEnergy += PEreadDynamicEnergy;
+		*readLatencyAG += PEreadLatencyAG;
+		*readDynamicEnergyAG += PEreadDynamicEnergyAG;
+
+		*bufferLatency += PEbufferLatency;
+		*bufferDynamicEnergy += PEbufferDynamicEnergy;
+		*icLatency += PEicLatency;
+		*icDynamicEnergy += PEicDynamicEnergy;
+
+		*coreLatencyADC += peLatencyADC;
+		*coreLatencyAccum += peLatencyAccum;
+		*coreLatencyOther += peLatencyOther;
+
+		*coreEnergyADC += peEnergyADC;
+		*coreEnergyAccum += peEnergyAccum;
+		*coreEnergyOther += peEnergyOther;
 		//其他的延迟和能耗暂时不考虑
 
 		
@@ -502,6 +547,21 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 		
 		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
 		*readDynamicEnergy += PEreadDynamicEnergy;
+		*readLatencyAG += PEreadLatencyAG;
+		*readDynamicEnergyAG += PEreadDynamicEnergyAG;
+
+		*bufferLatency += PEbufferLatency;
+		*bufferDynamicEnergy += PEbufferDynamicEnergy;
+		*icLatency += PEicLatency;
+		*icDynamicEnergy += PEicDynamicEnergy;
+
+		*coreLatencyADC += peLatencyADC;
+		*coreLatencyAccum += peLatencyAccum;
+		*coreLatencyOther += peLatencyOther;
+
+		*coreEnergyADC += peEnergyADC;
+		*coreEnergyAccum += peEnergyAccum;
+		*coreEnergyOther += peEnergyOther;
 		//其他的延迟和能耗暂时不考虑
 
 		//FFN1层 为 d_model*d_hidden
@@ -520,6 +580,21 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 		
 		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
 		*readDynamicEnergy += PEreadDynamicEnergy;
+		*readLatencyAG += PEreadLatencyAG;
+		*readDynamicEnergyAG += PEreadDynamicEnergyAG;
+
+		*bufferLatency += PEbufferLatency;
+		*bufferDynamicEnergy += PEbufferDynamicEnergy;
+		*icLatency += PEicLatency;
+		*icDynamicEnergy += PEicDynamicEnergy;
+
+		*coreLatencyADC += peLatencyADC;
+		*coreLatencyAccum += peLatencyAccum;
+		*coreLatencyOther += peLatencyOther;
+
+		*coreEnergyADC += peEnergyADC;
+		*coreEnergyAccum += peEnergyAccum;
+		*coreEnergyOther += peEnergyOther;
 		//其他的延迟和能耗暂时不考虑
 
 		//FFN2层 为 d_hidden*d_model
@@ -538,8 +613,24 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 		
 		*readLatency += PEreadLatency; //由于每个pe之间是串行执行的 乘2由于Wq和Wk大小相同
 		*readDynamicEnergy += PEreadDynamicEnergy;
-		//其他的延迟和能耗暂时不考虑
+		*readLatencyAG += PEreadLatencyAG;
+		*readDynamicEnergyAG += PEreadDynamicEnergyAG;
 
+		*bufferLatency += PEbufferLatency;
+		*bufferDynamicEnergy += PEbufferDynamicEnergy;
+		*icLatency += PEicLatency;
+		*icDynamicEnergy += PEicDynamicEnergy;
+
+		*coreLatencyADC += peLatencyADC;
+		*coreLatencyAccum += peLatencyAccum;
+		*coreLatencyOther += peLatencyOther;
+
+		*coreEnergyADC += peEnergyADC;
+		*coreEnergyAccum += peEnergyAccum;
+		*coreEnergyOther += peEnergyOther;
+		//其他的延迟和能耗暂时不考虑
+		
+		cout << "----------------- End PE Performance ------------------" <<  endl;
 		//buffer等延迟
 		double numBitToLoadOut, numBitToLoadIn;								 
 		// if (!param->chipActivation) {

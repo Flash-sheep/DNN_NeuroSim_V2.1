@@ -68,16 +68,19 @@ Param::Param() {
 	d_hidden = 11008;
 	 
 	input_len = 10; 			// 这里该如何设置？workLoad该如何选取
-	output_len = 500;
+	output_len = 50;
 	numDecoderBlock = 32;
 
+	v_on = 1.5;	 //参考magic参数设置
+	v_off = 0.3;
+	v_nor = 1.0;
 
 
 
 	operationmode = 2;     		// 1: conventionalSequential (Use several multi-bit RRAM as one synapse)
 								// 2: conventionalParallel (Use several multi-bit RRAM as one synapse)
 	
-	memcelltype = 3;        	// 1: cell.memCellType = Type::SRAM
+	memcelltype = 2;        	// 1: cell.memCellType = Type::SRAM
 								// 2: cell.memCellType = Type::RRAM
 								// 3: cell.memCellType = Type::FeFET
 	
@@ -158,8 +161,8 @@ Param::Param() {
 	relaxArrayCellWidth = 0;            // relax ArrayCellWidth or not
 	
 	numColMuxed = 8;                    // How many columns share 1 ADC (for eNVM and FeFET) or parallel SRAM
-	levelOutput = 64;                  // # of levels of the multilevelSenseAmp output, should be in 2^N forms; e.g. 32 levels --> 5-bit ADC
-	cellBit = 5;                        // precision of memory device 
+	levelOutput = 4;                  // # of levels of the multilevelSenseAmp output, should be in 2^N forms; e.g. 32 levels --> 5-bit ADC
+	cellBit = 2;                        // precision of memory device 
 	
 	/*** parameters for SRAM ***/
 	// due the scaling, suggested SRAM cell size above 22nm: 160F^2

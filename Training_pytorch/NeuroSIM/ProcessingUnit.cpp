@@ -344,6 +344,8 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, 
 		// default:
 		// 	break;
 		// }
+		cout<<"numSubArrayRow used is "<<ceil((double) weightMatrixRow/(double) param->numRowSubArray)<<" numSubArrayCol used is "<<ceil((double) weightMatrixCol/(double) param->numColSubArray)<<endl;
+		cout<<"numInVector is "<< numInVector<<endl;
 		for (int i=0; i<ceil((double) weightMatrixRow/(double) param->numRowSubArray); i++) {
 			for (int j=0; j<ceil((double) weightMatrixCol/(double) param->numColSubArray); j++) {
 				if ((i*param->numRowSubArray < weightMatrixRow) && (j*param->numColSubArray < weightMatrixCol) && (i*param->numRowSubArray < weightMatrixRow) ) {
@@ -396,7 +398,7 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, 
 					subArray->addNor = addNor;
 					subArray->mulNor = mulNor;
 					subArray->writeDynamicEnergyArray = writeDynamicEnergyArray;
-
+					// cout<<"subarray digital is "<<subArray->parallelWrite<<endl;
 					for (int k=0; k<numInVector; k++) {                 // calculate single subArray through the total input vectors
 						double activityRowRead = 0;
 						vector<double> input;
@@ -421,6 +423,7 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, 
 						
 						subArrayReadLatency += subArray->readLatency;
 						*readDynamicEnergy += subArray->readDynamicEnergy;
+						// cout<<"Subarray readLatency is "<<subArray->readLatency<<" Subarray arrayLatency is "<<subArray->writeLatencyArray <<endl;
 						subArrayLeakage = subArray->leakage;
 						subArrayReadLatencyAG += subArray->readLatencyAG*((param->trainingEstimation)==true? 1:0);
 						*readDynamicEnergyAG += subArray->readDynamicEnergyAG*((param->trainingEstimation)==true? 1:0);
@@ -846,6 +849,8 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, Technology& tech, 
 	}
 	*writeLatencyPeakWU = (*writeLatencyWU);
 	*writeDynamicEnergyPeakWU = (*writeDynamicEnergyWU);
+	cout<<"PE readLatency is"<<readLatency<<endl;
+	cout<<"PE readEnergy is"<<readDynamicEnergy<<endl;
 	return 0;
 }
 
@@ -1161,7 +1166,7 @@ void GetArrayEstimation(SubArray *subArray, Technology &tech, MemCell &cell, con
 	// calculate WL BL and SL energy
 
 	//NOR
-	*writeDynamicEnergyArray += subArray->capRow1 * cell.writeVoltage / 2 * cell.writeVoltage / 2 * param->numRowSubArrayReal;																																																	  // Selected WL
+	// *writeDynamicEnergyArray += subArray->capRow1 * cell.writeVoltage / 2 * cell.writeVoltage / 2 * param->numRowSubArrayReal;																																																	  // Selected WL
 	*writeDynamicEnergyArray += 0; //unselected WL 为0 其他没有选择的行是否需要charge，理论上需要，不然的话会有电压差，在给定的位置进行写入
 	*writeDynamicEnergyArray += subArray->capCol * cell.writeVoltage / 2 * cell.writeVoltage / 2 * param->numColSubArrayReal;															  // Unselected BLs
 	*writeDynamicEnergyArray += subArray->capCol * cell.writeVoltage * cell.writeVoltage * 2*totalWritePulse; 					//selected BLs 
