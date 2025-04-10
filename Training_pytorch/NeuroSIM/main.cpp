@@ -373,8 +373,50 @@ int main(int argc, char * argv[]) {
 				&layerReadLatencyPeakFW, &layerReadDynamicEnergyPeakFW, &layerReadLatencyPeakAG, &layerReadDynamicEnergyPeakAG,
 				&layerReadLatencyPeakWG, &layerReadDynamicEnergyPeakWG, &layerWriteLatencyPeakWU, &layerWriteDynamicEnergyPeakWU);
 
+			if (breakdownfile.is_open()) {
+				breakdownfile << seq_len_total << "," << layerReadLatency << "," << layerReadLatencyAG << "," << layerReadLatencyWG << "," << layerWriteLatencyWU << ",";
+				breakdownfile << layerReadDynamicEnergy << "," << layerReadDynamicEnergyAG << "," << layerReadDynamicEnergyWG << "," << layerWriteDynamicEnergyWU << ",";
+				breakdownfile << layerReadLatencyPeakFW << "," << layerReadLatencyPeakAG << "," << layerReadLatencyPeakWG << "," << layerWriteLatencyPeakWU << ",";
+				breakdownfile << layerReadDynamicEnergyPeakFW << "," << layerReadDynamicEnergyPeakAG << "," << layerReadDynamicEnergyPeakWG << "," << layerWriteDynamicEnergyPeakWU <<",";
+				breakdownfile << ", , " << coreLatencyADC << "," << coreLatencyAccum << "," << coreLatencyOther << "," <<layerbufferLatency << "," << layericLatency << "," << layerReadLatencyPeakWG << "," << layerWriteLatencyPeakWU << "," << layerDRAMLatency << ",";
+				breakdownfile << coreEnergyADC << "," << coreEnergyAccum << "," << coreEnergyOther << "," << layerbufferDynamicEnergy << "," << layericDynamicEnergy << "," << layerReadDynamicEnergyPeakWG << "," << layerWriteDynamicEnergyPeakWU << "," << layerDRAMDynamicEnergy << endl;
+			} else {
+				cout << "Error: the breakdown file cannot be opened!" << endl;
+			}
+			
 			chipReadLatency += layerReadLatency;
 			chipReadDynamicEnergy += layerReadDynamicEnergy;
+			chipReadLatencyAG += layerReadLatencyAG;
+			chipReadDynamicEnergyAG += layerReadDynamicEnergyAG;
+			chipReadLatencyWG += layerReadLatencyWG;
+			chipReadDynamicEnergyWG += layerReadDynamicEnergyWG;
+			chipWriteLatencyWU += layerWriteLatencyWU;
+			chipWriteDynamicEnergyWU += layerWriteDynamicEnergyWU;
+			chipDRAMLatency += layerDRAMLatency;
+			chipDRAMDynamicEnergy += layerDRAMDynamicEnergy;
+			
+			chipReadLatencyPeakFW += layerReadLatencyPeakFW;
+			chipReadDynamicEnergyPeakFW += layerReadDynamicEnergyPeakFW;
+			chipReadLatencyPeakAG += layerReadLatencyPeakAG;
+			chipReadDynamicEnergyPeakAG += layerReadDynamicEnergyPeakAG;
+			chipReadLatencyPeakWG += layerReadLatencyPeakWG;
+			chipReadDynamicEnergyPeakWG += layerReadDynamicEnergyPeakWG;
+			chipWriteLatencyPeakWU += layerWriteLatencyPeakWU;
+			chipWriteDynamicEnergyPeakWU += layerWriteDynamicEnergyPeakWU;
+			
+			
+			chipbufferLatency += layerbufferLatency;
+			chipbufferReadDynamicEnergy += layerbufferDynamicEnergy;
+			chipicLatency += layericLatency;
+			chipicReadDynamicEnergy += layericDynamicEnergy;
+			
+			chipLatencyADC += coreLatencyADC;
+			chipLatencyAccum += coreLatencyAccum;
+			chipLatencyOther += coreLatencyOther;
+			chipEnergyADC += coreEnergyADC;
+			chipEnergyAccum += coreEnergyAccum;
+			chipEnergyOther += coreEnergyOther;
+
 
 			numComputation += seq_len*param->d_k*param->n_heads*param->d_model*2; //WQ
 			numComputation += seq_len*param->d_k*param->n_heads*param->d_model*2; //WK

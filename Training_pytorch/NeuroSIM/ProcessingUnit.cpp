@@ -1168,8 +1168,10 @@ void GetArrayEstimation(SubArray *subArray, Technology &tech, MemCell &cell, con
 	//NOR
 	// *writeDynamicEnergyArray += subArray->capRow1 * cell.writeVoltage / 2 * cell.writeVoltage / 2 * param->numRowSubArrayReal;																																																	  // Selected WL
 	*writeDynamicEnergyArray += 0; //unselected WL 为0 其他没有选择的行是否需要charge，理论上需要，不然的话会有电压差，在给定的位置进行写入
-	*writeDynamicEnergyArray += subArray->capCol * cell.writeVoltage / 2 * cell.writeVoltage / 2 * param->numColSubArrayReal;															  // Unselected BLs
-	*writeDynamicEnergyArray += subArray->capCol * cell.writeVoltage * cell.writeVoltage * 2*totalWritePulse; 					//selected BLs 
-	*writeDynamicEnergyArray += cell.writeVoltage * cell.writeVoltage / (abs(1 / param->maxConductance + 1 / param->minConductance) / 2) * cell.writePulseWidth * weightMatrixRow/2 *totalWritePulse; //电阻改变消耗的能量 假设一次nor有一半的电阻转变
+	// *writeDynamicEnergyArray += subArray->capCol * cell.writeVoltage / 2 * cell.writeVoltage / 2 * param->numColSubArrayReal;															  // Unselected BLs
+	*writeDynamicEnergyArray += subArray->capCol * param->v_nor * param->v_nor * 2*totalWritePulse; 					//selected BLs 
+	*writeDynamicEnergyArray += param->v_nor * param->v_nor / (abs(1 / param->maxConductance + 1 / param->minConductance) / 2) * cell.writePulseWidth * weightMatrixRow/2 *totalWritePulse; //电阻改变消耗的能量 假设一次nor有一半的电阻转变
+	
+	cout<<(2*weightMatrixCol/param->synapseBit)/(*writeDynamicEnergyArray)*1e-12<<endl;
 	//已选择的行上未选择的电阻没有消耗能量，因为两端电压相同
 }

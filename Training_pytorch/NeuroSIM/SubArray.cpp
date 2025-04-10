@@ -2401,7 +2401,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, const vect
 
 				readDynamicEnergy += writeDynamicEnergyArray; //将矩阵的阵列写能耗计入 这一部分在processing Unit中计算
 				readDynamicEnergy += slSwitchMatrix.readDynamicEnergy;//将slSwitch矩阵的nor能耗计入
-				cout<<"Subarray readDynamicEnergy is"<<readDynamicEnergy<<" Subarray arrayEnergy is "<<writeDynamicEnergyArray<<endl;
+				// cout<<"Subarray readDynamicEnergy is"<<readDynamicEnergy<<" Subarray arrayEnergy is "<<writeDynamicEnergyArray<<endl;
 				readDynamicEnergyADC = readDynamicEnergyArray + multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy + sarADC.readDynamicEnergy;
 				readDynamicEnergyAccum = shiftAddWeight.readDynamicEnergy + shiftAddInput.readDynamicEnergy;
 				readDynamicEnergyOther = wlNewSwitchMatrix.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy + ( ((numColMuxed > 1)==true? (mux.readDynamicEnergy + muxDecoder.readDynamicEnergy):0) );
